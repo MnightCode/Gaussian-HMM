@@ -80,21 +80,55 @@ Normalized confidence ratios: vol_ratio (>=0.3?), ret_ratio (>=0.5?)
 DECISION: BEAR | BULL | NEUTRAL
 ```
 
-## Replay & stability (`replay.py`)
+## Snapshot stability probe (`replay.py`)
 
-Runs the model on a REAL adjusted SPY CSV across known regimes (calm bull, COVID
-crash, 2022 bear, modern market, current date) as causal as-of dates, repeating
-each fit N times to probe the run-to-run variability that follows from **not**
-fixing `random_state`:
+Runs the model at a handful of **fixed as-of dates**, repeating each fit N
+times to probe run-to-run variability from **not** fixing `random_state`. This
+is a stability spot-check only — **a handful of dates cannot characterize
+general model behavior** (e.g. "it only catches crashes"); use
+`hmm_daily_replay.py` below for that.
 
 ```bash
 python replay.py --csv spy_adj.csv --repeats 20
 python replay.py --csv spy_adj.csv --asof 2020-03-23     # single date
 ```
 
-For each period it reports the decision distribution over the repeats, a
-stability %, and the bear/bull mean-return and confidence-ratio ranges. A low
-stability % means the regime call itself flips between identical runs.
+Always prints the actually-resolved last-bar date used — never assumes the
+as-of date (or "today") equals the last available bar in a static dataset.
+
+## Full daily causal replay (`hmm_daily_replay.py`)
+
+Runs the model for **every trading day** in the dataset (from the empirical
+`MIN_BARS` floor onward), each time training on ALL history strictly before
+that day. Derives a **persistent directional state** (bear/bull decisions set
+it; neutral/error decisions hold the previous state) and records the exact
+date of every actual BULL→BEAR / BEAR→BULL transition:
+
+```bash
+python hmm_daily_replay.py --csv data/spy_raw_d1.csv --price-field Close \
+    --out-prefix reports/daily_replay --workers 4
+
+python plot_switches.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --switches reports/daily_replay_switches.csv \
+    --out reports/daily_replay_switches.png
+```
+
+Outputs `<prefix>_timeline.csv` (one row per decision day: `n_bars`, `n_obs`,
+`today_regime`, `bear_state`, `bull_state`, `vol_ratio`, `ret_ratio`,
+`raw_decision`, `persistent_state`, `error`) and `<prefix>_switches.csv` (one
+row per actual transition, with the SPY close at that date for plotting).
+Per-day fits are parallelized (independent given the immutable price series);
+persistent-state/switch derivation is a single sequential pass afterward so
+causal ordering is exact regardless of worker completion order.
+
+## Empirical minimum window (`probe_min_bars.py`)
+
+`MIN_BARS` is **not** an assumed constant — it comes from probing real SPY
+history at increasing window sizes (6 historical slices × 8 repeats each),
+looking for `ZeroDivisionError` / singular-covariance / NaN failures. See
+`probe_min_bars_output.txt` for the recorded run. Even sizes above the clean
+floor showed a rare stochastic failure (missing `random_state`), so the daily
+replay retries a few times per day rather than assuming any size is failure-proof.
 
 ## Tests
 

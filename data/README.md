@@ -8,10 +8,11 @@ Drop the SPY dataset here. `replay.py` / `hmm_standalone.py` consume it via
 The model trains on **ALL available completed history strictly before the
 decision date D** — there is **no fixed 2718-bar window** (binding to the
 paper's bar count is intentionally dropped). Whatever history the file provides
-is used in full: 2,000 rows → 2,000 are used; 8,000 → 8,000. The only floor is a
-**technical minimum** (`MIN_BARS`, ~1 trading year) needed for a stable fit; it
-is not taken from the paper. The tools always report the actual `n_bars` /
-`n_obs`.
+is used in full: 2,000 rows → 2,000 are used; 8,000 → 8,000. The only floor is
+`MIN_BARS`, an **empirically probed** technical minimum (see
+`probe_min_bars.py` and `probe_min_bars_output.txt` at the repo root) — not an
+assumed number, not taken from the paper. The tools always report the actual
+`n_bars` / `n_obs`.
 
 ## Required format
 
@@ -26,11 +27,16 @@ is not taken from the paper. The tools always report the actual `n_bars` /
 
 ## Files currently in this folder
 
-- `spy_raw_d1.csv` — SPY ETF daily **raw** close, ~2000→2025 (source:
-  investing.com export via a public GitHub mirror). Raw, not dividend-adjusted;
-  run it with `--price-field Close`. Good for full-range regime coverage
-  (2008 GFC, COVID, 2022 bear, modern). For strict adjusted fidelity, drop an
-  `Adj Close` series here instead (see producer below).
+- ⚠️ **`spy_raw_d1.csv` — TEMPORARY, NOT ADJUSTED, NOT THE 1:1 REFERENCE
+  SERIES.** SPY ETF daily **raw** close, 2000-01-03 → 2026-03-20 (source:
+  investing.com export via a public GitHub mirror, `willhjw/big_movers`). It is
+  **not** dividend/split adjusted, so it does **not** match the paper's /
+  QuantConnect's default series. It exists only to get a full-range causal
+  replay running (2000/2008 GFC/COVID/2022/recent) while an adjusted series is
+  still pending. Any tool run against it (`--price-field Close`) prints an
+  explicit stderr WARNING for this reason. **Do not present results from this
+  file as the strict 1:1 replication** — swap in a true `Adj Close` series
+  (see producer below) before drawing conclusions that depend on adjustment.
 
 ## Adjusted producer (run where the network is reachable)
 

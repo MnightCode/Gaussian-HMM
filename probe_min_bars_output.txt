@@ -1,0 +1,40 @@
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Model is not converging.  Current: -23.937963029503074 is not greater than -18.180217441022858. Delta is -5.757745588480216
+Fitting a model with 23 free scalar parameters with only 20 data points will result in a degenerate solution.
+Fitting a model with 23 free scalar parameters with only 20 data points will result in a degenerate solution.
+Fitting a model with 23 free scalar parameters with only 20 data points will result in a degenerate solution.
+     20      10        48    31    17  FitError: Optimization converged to parameters that are outside the range allowed by the distribution.
+Model is not converging.  Current: -63.421240079358114 is not greater than -52.08441099718762. Delta is -11.336829082170496
+Model is not converging.  Current: -62.539244770540776 is not greater than -53.28069201935344. Delta is -9.258552751187338
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Model is not converging.  Current: -78.41470761443553 is not greater than -65.6793424886992. Delta is -12.735365125736323
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Model is not converging.  Current: -91.39194502808124 is not greater than -78.94070537568172. Delta is -12.451239652399522
+Some rows of transmat_ have zero sum because no transition from the state was ever observed.
+Model is not converging.  Current: -90.3875897583067 is not greater than -80.41723706357197. Delta is -9.970352694734729
+     30      20        48    40     8  FitError: Optimization converged to parameters that are outside the range allowed by the distribution.
+Model is not converging.  Current: -117.09561086943792 is not greater than -113.1767680578112. Delta is -3.9188428116267175
+     40      30        48    40     8  FitError: Optimization converged to parameters that are outside the range allowed by the distribution.
+     50      40        48    48     0  
+     75      65        48    48     0  
+    100      90        48    48     0  
+    125     115        48    48     0  
+    150     140        48    47     1  FitError: Optimization converged to parameters that are outside the range allowed by the distribution.
+    200     190        48    48     0  
+    250     240        48    48     0  
+    300     290        48    48     0  
+    400     390        48    48     0  
+    500     490        48    48     0  
+
+First N with 100% success across all probed slices/repeats:
+  -> N_bars=50  (N_obs=40)

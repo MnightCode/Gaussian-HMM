@@ -68,10 +68,23 @@ RET_THRESHOLD = 0.5        # normalized PDF ratio threshold for daily return
 # Training window: use ALL available completed history strictly before D.
 # The paper's fixed ~2718-bar window is intentionally NOT used -- binding the
 # window to that count is a deliberate non-goal here. MIN_BARS is a purely
-# TECHNICAL floor (~1 trading year) for a stable 3-state full-cov fit plus the
-# per-regime KS fits; it is NOT taken from the paper. Actual n_bars / n_obs are
-# always reported.
-MIN_BARS = 252
+# TECHNICAL floor, determined EMPIRICALLY (see probe_min_bars.py and its
+# recorded output in probe_min_bars_output.txt), NOT assumed and NOT taken
+# from the paper. The probe fit real SPY history at 6 different historical
+# slices x 8 repeats per candidate size:
+#   N=15,20         : mostly FitError / degenerate solution / non-convergence
+#   N=30             : 40/48 ok  (8 stochastic failures)
+#   N=40             : 40/48 ok  (8 stochastic failures)
+#   N=50,75,100,125  : 48/48 ok  (first clean size: 50)
+#   N=150            : 47/48 ok  (ONE stochastic failure even here)
+#   N=200..500       : 48/48 ok
+# Reading: N=50 is the first size with zero observed failures, but N=150's
+# single failure shows the missing random_state means a rare FitError/
+# non-convergence CAN happen at any size -- MIN_BARS is not an absolute
+# guarantee, just the empirical floor below which failures are common. Callers
+# (e.g. the daily replay) must still tolerate and retry/record occasional
+# per-day errors rather than assume a crash-free run.
+MIN_BARS = 50
 DEFAULT_START = "1993-01-01"   # SPY inception; Yahoo path pulls from here to D
 
 
@@ -123,9 +136,9 @@ class Distribution(object):
 def compute_features(prices):
     """Reproduce the author's warm-up + feature loop exactly.
 
-    Given `prices` (list of daily closes, length HISTORY_BARS), returns
-    (prices, Volatility, Return) each sliced to drop the first 10 warm-up
-    entries -> length EXPECTED_OBS.
+    Given `prices` (list of daily closes, any length), returns
+    (prices, Volatility, Return) each sliced to drop the first WARMUP=10
+    entries -> length len(prices) - WARMUP.
     """
     prices = list(prices)
 
@@ -306,13 +319,16 @@ _ADJ_ALIASES = ("adj close", "adj_close", "adjclose", "adjusted close",
                 "adjusted_close", "adjustedclose", "adj. close")
 
 
-def _closes_from_csv(csv_path, asof, price_field):
-    """Adjusted daily closes from a CSV, using only bars STRICTLY BEFORE asof.
+def series_from_csv(csv_path, price_field=None):
+    """Return (dates, closes) for the FULL CSV series, no as-of filtering.
+
+    dates: list of tz-naive pandas.Timestamp, ascending, one per row.
+    closes: parallel list of float prices.
 
     For 1:1 fidelity an ADJUSTED close column is required. If `price_field` is
-    given, that exact column is used (explicit user override). Otherwise an
-    adjusted-close column must exist; a raw 'Close' is NEVER silently
-    substituted -- a missing adjusted column is a hard error.
+    given, that exact column is used (explicit user override -- e.g. to run on
+    a raw 'Close' series knowingly). Otherwise an adjusted-close column must
+    exist; a raw 'Close' is NEVER substituted silently.
     """
     import pandas as pd
     df = pd.read_csv(csv_path)
@@ -327,6 +343,12 @@ def _closes_from_csv(csv_path, asof, price_field):
         if price_col is None:
             raise RuntimeError(f"CSV has no column '{price_field}'. "
                                f"Available columns: {list(df.columns)}")
+        if price_field.lower() not in _ADJ_ALIASES:
+            print(f"WARNING: using column '{price_field}', which is NOT an "
+                 "adjusted-close alias. This is a TEMPORARY/non-adjusted "
+                 "series, not the paper's 1:1 adjusted reference. Results on "
+                 "this data must not be treated as the strict replication.",
+                 file=sys.stderr)
     else:
         price_col = next((lower[a] for a in _ADJ_ALIASES if a in lower), None)
         if price_col is None:
@@ -340,7 +362,16 @@ def _closes_from_csv(csv_path, asof, price_field):
     # A plain 'YYYY-MM-DD' CSV is tz-naive; Timestamp.now(tz="UTC") is tz-aware,
     # and comparing the two raises TypeError -- hence the explicit unification.
     df[date_col] = pd.to_datetime(df[date_col], utc=True).dt.tz_convert(None)
-    df = df.sort_values(date_col)
+    df = df.sort_values(date_col).dropna(subset=[price_col])
+    dates = list(df[date_col])
+    closes = [float(x) for x in df[price_col].tolist()]
+    return dates, closes
+
+
+def _closes_from_csv(csv_path, asof, price_field):
+    """Adjusted daily closes from a CSV, using only bars STRICTLY BEFORE asof."""
+    import pandas as pd
+    dates, closes = series_from_csv(csv_path, price_field)
 
     # Decision date D = asof if given, else today (UTC). Only bars STRICTLY < D.
     d = pd.Timestamp(asof) if asof is not None else pd.Timestamp.now(tz="UTC")
@@ -348,9 +379,7 @@ def _closes_from_csv(csv_path, asof, price_field):
         d = d.tz_convert("UTC").tz_localize(None)
     d = d.normalize()
 
-    df = df[df[date_col] < d]
-    closes = [float(x) for x in df[price_col].dropna().tolist()]
-    return closes
+    return [c for dt, c in zip(dates, closes) if dt < d]
 
 
 def load_closes(ticker, asof, csv_path=None, price_field=None,
@@ -376,14 +405,47 @@ def load_closes(ticker, asof, csv_path=None, price_field=None,
     return closes
 
 
+def resolve_last_bar_date(ticker, asof, csv_path=None, price_field=None):
+    """Return the actual date of the last bar used (strictly before D), or None.
+
+    Do NOT assume 'today': a static/offline CSV dataset can end well before the
+    real wall-clock date, so the resolved bar must always be reported and
+    labeled explicitly rather than implied to be "current".
+    """
+    import pandas as pd
+    if csv_path:
+        dates, _ = series_from_csv(csv_path, price_field)
+    else:
+        import yfinance as yf
+        d0 = pd.Timestamp(asof).normalize() if asof is not None else pd.Timestamp.now(tz="UTC").normalize()
+        data = yf.download(ticker, start=(d0 - pd.Timedelta(days=30)).date(), end=d0.date(),
+                           interval="1d", auto_adjust=False, progress=False)
+        if data is None or len(data) == 0:
+            return None
+        idx = pd.to_datetime(data.index)
+        if getattr(idx, "tz", None) is not None:
+            idx = idx.tz_convert(None)
+        return idx[-1] if len(idx) else None
+
+    d = pd.Timestamp(asof) if asof is not None else pd.Timestamp.now(tz="UTC")
+    if d.tzinfo is not None:
+        d = d.tz_convert("UTC").tz_localize(None)
+    d = d.normalize()
+    prior = [dt for dt in dates if dt < d]
+    return prior[-1] if prior else None
+
+
 # --- Reporting ---------------------------------------------------------------
-def format_report(result, ticker, asof):
+def format_report(result, ticker, asof, last_bar_date=None):
     lines = []
     lines.append("=" * 64)
     lines.append(f"Regime-Switching HMM (standalone replica)  ticker={ticker}")
-    lines.append(f"as-of: {asof or 'latest completed bar'}   "
-                 f"n_bars={result['n_obs'] + WARMUP}  n_obs={result['n_obs']}  "
-                 f"(all history to D; warm-up {WARMUP} dropped)")
+    decision_date = asof or "unspecified (resolved to latest bar in the dataset)"
+    resolved = (f"  last bar used: {last_bar_date.strftime('%Y-%m-%d')}"
+               if last_bar_date is not None else "  last bar used: UNKNOWN")
+    lines.append(f"decision date D: {decision_date}{resolved}")
+    lines.append(f"n_bars={result['n_obs'] + WARMUP}  n_obs={result['n_obs']}  "
+                 f"(ALL history to D used, no fixed window; warm-up {WARMUP} dropped)")
     lines.append("=" * 64)
     lines.append("Hidden states (mean return / mean volatility / #days / emission means):")
     for i in range(result["n_states"]):
@@ -448,14 +510,17 @@ def main(argv=None):
 
     _, Volatility, Return = compute_features(closes)
     result = train(Volatility, Return)
+    last_bar_date = resolve_last_bar_date(args.ticker, args.asof,
+                                          csv_path=args.csv, price_field=args.price_field)
 
     if args.json:
         payload = dict(result)
         payload["ticker"] = args.ticker
         payload["asof"] = args.asof
+        payload["last_bar_date"] = last_bar_date.strftime("%Y-%m-%d") if last_bar_date is not None else None
         print(json.dumps(payload, indent=2))
     else:
-        print(format_report(result, args.ticker, args.asof))
+        print(format_report(result, args.ticker, args.asof, last_bar_date))
 
     return 0
 

@@ -4,12 +4,16 @@ Replay + stability harness for the standalone SPY regime HMM.
 Answers four questions on REAL adjusted SPY D1 bars (fed via --csv, since this
 is not a data source, only an analysis wrapper over hmm_standalone):
 
-  1. What does the model output for the current date.
-  2. What does it output on replay across known regimes (calm bull, COVID crash,
-     2022 bear, modern market) -- each as a causal as-of (bars strictly < D).
-  3. Which hidden states / decisions it actually produces.
-  4. Whether the decision is stable across repeated runs, given that the
-     author's code fixes no random_state (each fit re-initialises randomly).
+  1. What does the model output for the latest bar available in the dataset
+     (NOT assumed to be "today" -- the resolved bar date is always printed).
+  2. What does it output on replay at a handful of snapshot dates -- this is
+     ONLY a spot-check / stability probe. It CANNOT establish general model
+     behavior (e.g. "catches crashes", "misses slow bears"); see
+     hmm_daily_replay.py for the full day-by-day walk-forward that can.
+  3. Which hidden states / decisions it actually produces at those snapshots.
+  4. Whether the decision is stable across repeated runs at a frozen window,
+     given that the author's code fixes no random_state (each fit
+     re-initialises randomly).
 
 For each as-of date the window is FROZEN (deterministic from CSV+asof), then
 train() is run --repeats times to expose run-to-run variability.
@@ -27,12 +31,15 @@ import sys
 import hmm_standalone as H
 
 # Default causal as-of dates (decision made at the open of D, bars strictly < D).
+# These are labels for the DATE chosen, not a claim about what regime the model
+# will output there -- that is exactly what this snapshot tool cannot establish
+# on its own; see hmm_daily_replay.py for the full day-by-day walk-forward.
 DEFAULT_PERIODS = [
-    ("calm bull (pre-COVID)", "2017-06-01"),
-    ("COVID crash",           "2020-03-23"),
-    ("2022 bear",             "2022-06-16"),
-    ("modern market",         "2025-06-02"),
-    ("current date",          None),
+    ("2017-06-01", "2017-06-01"),
+    ("2020-03-23 (COVID)", "2020-03-23"),
+    ("2022-06-16", "2022-06-16"),
+    ("2025-06-02", "2025-06-02"),
+    ("latest available in dataset", None),
 ]
 
 
@@ -98,14 +105,18 @@ def main(argv=None):
             closes = H.load_closes("SPY", asof, csv_path=args.csv,
                                    price_field=args.price_field)
         except Exception as exc:
-            print(f"\n[{label}]  as-of={asof or 'latest'}  SKIPPED: {exc}")
+            print(f"\n[{label}]  as-of={asof or 'unspecified'}  SKIPPED: {exc}")
             continue
 
+        last_bar = H.resolve_last_bar_date("SPY", asof, csv_path=args.csv,
+                                           price_field=args.price_field)
+        last_bar_s = last_bar.strftime("%Y-%m-%d") if last_bar is not None else "UNKNOWN"
         runs, n_obs, n_bars = run_window(closes, args.repeats)
         s = summarise(runs)
         verdict = ("STABLE" if s["distinct"] == 1
                    else f"UNSTABLE ({s['distinct']} distinct)")
-        print(f"\n[{label}]  as-of={asof or 'latest'}   n_bars={n_bars}  n_obs={n_obs}")
+        print(f"\n[{label}]  D={asof or 'unspecified'}  last_bar_used={last_bar_s}  "
+              f"n_bars={n_bars}  n_obs={n_obs}")
         print(f"  decisions over {len(runs)} runs : {s['counts']}")
         print(f"  modal decision           : {s['modal'].upper()}  "
               f"(stability {s['stability']*100:.0f}%)  -> {verdict}")
