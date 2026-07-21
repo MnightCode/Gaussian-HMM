@@ -136,17 +136,13 @@ forward. Per-day fits are parallelized (independent given the immutable price
 series); results are written back out in day order regardless of worker
 completion order.
 
-## Window-size sweep (`--window`, `compare_windows.py`)
+## Window-size sweep (`--window`, `compare_windows.py`) — exploratory only
 
 `hmm_daily_replay.py --window N` trains each day's fit on a **rolling** window
 of the trailing N bars instead of all history (`--window` omitted). Window
-size is treated as **a parameter to sweep, not a fixed constant** — neither
-"all history" nor any particular rolling size (including the paper's ~2718) is
-assumed correct. The all-history run raised a concrete question: does folding
-2000/2008/2020 into every single day's fit, forever, suppress the model's
-ability to recognize a 'bull' regime on a much later, calmer slice of data?
-Comparing several rolling sizes against all-history is how that gets answered
-instead of asserted.
+size is **a parameter to sweep, not a fixed constant** — neither "all
+history" nor any particular rolling size (including the paper's ~2718) is
+assumed correct, and no window is chosen as "better" based on this sweep.
 
 ```bash
 for w in 1000 2000 3000 5000; do
@@ -162,10 +158,16 @@ python compare_windows.py \
 ```
 
 `compare_windows.py` aggregates each window's `raw_decision` distribution
-overall and within four eras (2008 GFC, 2020 COVID, 2022, 2023-2025 rally) —
-a pure count of the three literal outputs per era per window size, nothing
-about "markets". See `reports/window_comparison.csv` for the recorded sweep
-(raw close, all caveats from the data-source section below still apply).
+overall and within four manually-named eras — a day-count percentage per
+era per window. **This does not show phase recognition** (a % of bull-days
+inside a named era does not indicate whether the model detected the phase's
+start, held it consistently, or exited near its end — see
+`reports/SWEEP_INTERPRETATION_RETRACTED.md`). The code and raw per-window
+timelines remain valid as exploratory sensitivity data; the era-percentage
+interpretation drawn from them earlier is retracted. Proper phase-level
+detection (first/last matching decision, detection/exit delay, matching
+streak) requires an independently-approved ground-truth phase table — see
+`reports/market_phases_template.csv` and `docs/phase-matching-metrics.md`.
 
 ## Empirical minimum window (`probe_min_bars.py`)
 
