@@ -99,16 +99,18 @@ as-of date (or "today") equals the last available bar in a static dataset.
 ## Full daily causal replay (`hmm_daily_replay.py`)
 
 Runs the model for **every trading day** in the dataset (from the empirical
-`MIN_BARS` floor onward), each time training on ALL history strictly before
-that day, and records the model's **raw** output for that day: exactly one of
-`bear` / `bull` / `neutral`, straight from `train()`. Nothing is derived from
-it -- no persistence, no latching, no "state that carries forward on neutral",
-no "transition events". An earlier version of this tool computed such a
-derived state and drew conclusions from it (e.g. "stuck in BEAR for 4 years");
-that was Claude's own interpretation layered on top of the model, not
-something the author's `train()` computes or exposes, and it has been
-withdrawn -- see git history. Do not reintroduce that layer without first
-verifying against the author's exact execution code what (if anything)
+`MIN_BARS` floor onward), each time training on history strictly before that
+day (see `--window` below for how much), and records the model's **raw**
+output for that day: exactly one of `bear` / `bull` / `neutral`, straight from
+`train()`. There is no persistence, no latching, no "state that carries
+forward on neutral" -- **no persistent-state transition events; only literal
+raw-decision changes are recorded** (`decision_changed` = today's raw output
+differs from yesterday's, nothing more). An earlier version of this tool
+computed a derived persistent state and drew conclusions from it (e.g. "stuck
+in BEAR for 4 years"); that was Claude's own interpretation layered on top of
+the model, not something the author's `train()` computes or exposes, and it
+has been withdrawn -- see git history. Do not reintroduce that layer without
+first verifying against the author's exact execution code what (if anything)
 `neutral` does beyond being one of the three raw outputs.
 
 ```bash

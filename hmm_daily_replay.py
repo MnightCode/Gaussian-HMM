@@ -2,9 +2,15 @@
 Full daily causal walk-forward replay of the standalone SPY regime HMM.
 
 For EVERY trading day D in the dataset (from the empirical technical floor
-onward), runs hmm_standalone.train() using ALL available history STRICTLY
-BEFORE D (no lookahead, no fixed bar-count window -- see hmm_standalone.py).
-Records the model's RAW output for that day.
+onward), runs hmm_standalone.train() using history STRICTLY BEFORE D (no
+lookahead) -- either ALL of it (default) or a ROLLING window of the trailing
+`--window` N bars. Records the model's RAW output for that day.
+
+Window size is a PARAMETER TO SWEEP, not a fixed constant: neither "all
+history" nor any particular rolling size (e.g. the paper's ~2718) is assumed
+correct a priori. An all-history run and a handful of rolling sizes should be
+compared against each other before drawing any conclusion about which is more
+representative of the author's rolling-window design intent.
 
 Source of truth (verbatim from the author's train(), see hmm_standalone.py):
   1. confidence_pass = vol_ratio >= 0.3 AND ret_ratio >= 0.5
@@ -42,8 +48,13 @@ Outputs:
   <out-prefix>_transitions.csv -- same columns, filtered to decision_changed=true.
 
 Usage:
+  # all-history (default):
   python hmm_daily_replay.py --csv data/spy_raw_d1.csv --price-field Close \
       --out-prefix reports/daily_replay --workers 4
+
+  # rolling window of the trailing 2000 bars:
+  python hmm_daily_replay.py --csv data/spy_raw_d1.csv --price-field Close \
+      --window 2000 --out-prefix reports/daily_replay_w2000 --workers 4
 
 Performance: each day's fit is independent given the (immutable) price
 series, so per-day computation is parallelized across worker processes.
@@ -97,15 +108,34 @@ TRANSITION_MAP = {
 _CLOSES = None
 
 
-def _init_worker(closes):
-    global _CLOSES
+_WINDOW = None   # None = all history strictly before D; int = trailing N bars
+
+
+def _init_worker(closes, window):
+    global _CLOSES, _WINDOW
     _CLOSES = closes
+    _WINDOW = window
     warnings.filterwarnings("ignore")
 
 
+def history_slice(closes, i, window):
+    """Return the training history for decision day index i: bars strictly
+    before D (index i), either ALL of them (window=None) or the trailing
+    `window` of them (a rolling window, still causal -- never includes i).
+
+    This is the ONE place window size affects the replay; everything else
+    (feature formulas, HMM config, decision logic, day-to-day comparison) is
+    unchanged regardless of window choice. Pulled out as a pure function so
+    the slicing itself is unit-testable without running any HMM fit.
+    """
+    if window is None:
+        return closes[:i]
+    return closes[max(0, i - window):i]
+
+
 def _process_day(i):
-    """Raw HMM result for decision day index i: uses ONLY _CLOSES[:i] (< D)."""
-    history = _CLOSES[:i]
+    """Raw HMM result for decision day index i: uses ONLY bars < D."""
+    history = history_slice(_CLOSES, i, _WINDOW)
     n_bars = len(history)
     _, vol, ret = H.compute_features(history)
     n_obs = len(vol)
@@ -201,6 +231,12 @@ def main(argv=None):
                     help="Output file prefix (writes <prefix>_timeline.csv and "
                          "<prefix>_transitions.csv).")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--window", type=int, default=None,
+                    help="Rolling window size in bars (trailing N bars strictly "
+                         "before D). Omit for ALL available history (default). "
+                         "Neither choice is the paper's number -- pick and report "
+                         "whichever you are testing; this is a parameter to sweep, "
+                         "not a fixed constant.")
     ap.add_argument("--min-bars", type=int, default=H.MIN_BARS,
                     help=f"Technical floor for n_bars (default {H.MIN_BARS}, "
                          "empirically derived -- see probe_min_bars.py).")
@@ -218,12 +254,12 @@ def main(argv=None):
          f"range={dates[0].date()}..{dates[-1].date()}")
     print(f"decision days to process: {len(day_indices)}  "
          f"(from {dates[args.min_bars].date()} to {dates[-1].date()})  "
-         f"min_bars={args.min_bars}  workers={args.workers}")
+         f"min_bars={args.min_bars}  window={args.window or 'ALL'}  workers={args.workers}")
 
     results = {}
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init_worker,
-                             initargs=(closes,)) as ex:
+                             initargs=(closes, args.window)) as ex:
         futs = {ex.submit(_process_day, i): i for i in day_indices}
         done_n = 0
         for fut in as_completed(futs):

@@ -191,5 +191,42 @@ class DeriveDailyDecisions(unittest.TestCase):
         self.assertEqual(rows[1]["last_bar_used"], "2020-01-01")
 
 
+class HistorySlice(unittest.TestCase):
+    """history_slice() is the ONE place --window affects the replay. Pure
+    function, no HMM involved -- window size is a parameter to sweep, not a
+    fixed constant, so both modes must be exactly correct and causal."""
+
+    def test_window_none_returns_all_prior_bars(self):
+        closes = list(range(100))
+        self.assertEqual(R.history_slice(closes, 10, None), list(range(10)))
+        self.assertEqual(R.history_slice(closes, 100, None), list(range(100)))
+
+    def test_window_returns_trailing_n_bars_only(self):
+        closes = list(range(100))
+        self.assertEqual(R.history_slice(closes, 50, 10), list(range(40, 50)))
+        self.assertEqual(len(R.history_slice(closes, 50, 10)), 10)
+
+    def test_window_never_includes_the_decision_day_itself(self):
+        closes = list(range(100))
+        sl = R.history_slice(closes, 50, 10)
+        self.assertNotIn(50, sl)  # index 50 (the decision day D) excluded
+        self.assertEqual(sl[-1], 49)  # last bar is D-1
+
+    def test_window_larger_than_available_history_returns_all_available(self):
+        closes = list(range(100))
+        # window=1000 but only 30 bars exist before index 30 -> clamp to 30
+        self.assertEqual(R.history_slice(closes, 30, 1000), list(range(30)))
+
+    def test_window_and_no_window_agree_when_window_covers_all_history(self):
+        closes = list(range(100))
+        self.assertEqual(R.history_slice(closes, 40, None),
+                         R.history_slice(closes, 40, 1000))
+
+    def test_window_size_is_constant_regardless_of_position_once_enough_history(self):
+        closes = list(range(10000))
+        for i in (2000, 5000, 9999):
+            self.assertEqual(len(R.history_slice(closes, i, 1000)), 1000)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
