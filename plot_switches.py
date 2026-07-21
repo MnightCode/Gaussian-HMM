@@ -41,9 +41,11 @@ def main(argv=None):
 
     dates, closes = H.series_from_csv(args.price_csv, args.price_field)
 
+    import pandas as pd
     switches = []
     with open(args.switches, newline="") as f:
         for row in csv.DictReader(f):
+            row["date"] = pd.Timestamp(row["date"])
             switches.append(row)
 
     fig, ax = plt.subplots(figsize=(16, 7))
