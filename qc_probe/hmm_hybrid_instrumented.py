@@ -1,24 +1,50 @@
 """
 Instrumented copy of the author's original HMMHybrid QuantConnect algorithm.
 
-ONLY logging was added, at the entry and every return point of Reset() and
-rebalance(). Every line of algorithmic logic (branching, HMM training,
-factor-model selection, order sizing) is byte-for-byte identical to the
-original -- instrumentation is marked with `# --- LOG ... ---` comments so
-every addition is visible at a glance and easy to verify against the
-original by diff.
+NOT byte-for-byte identical to the original: the class was renamed
+(HMMHybridInstrumented, so it can coexist with the original in the same
+project if needed), `from AlgorithmImports import *` was added (see below),
+and logging statements/comments were added. What IS claimed, precisely:
+the algorithmic branches in Reset() and rebalance() are intended to match
+the supplied author source; instrumentation and compatibility
+imports/class wrapper were added. This is verified mechanically, not just
+asserted -- see qc_probe/verify_instrumentation.py, which parses this file
+and qc_probe/reference_original_hmm_hybrid.py with Python's `ast` module,
+strips ONLY the marked logging statements (at any nesting depth), and
+confirms the remaining statements are structurally identical. Current
+result: PASS for both Reset() and rebalance() (run the script yourself to
+reproduce).
 
-Purpose: settle experimentally which callback (Reset or rebalance) actually
-executes first on a day where QuantConnect's scheduler fires both
-(MonthStart, AfterMarketOpen) -- see docs/author-decision-semantics.md,
-section 6, "open question". The logs record, for each such day:
-callback name, self.Time, switch_before, switch_after (and, for rebalance(),
-which branch was taken).
+NOT claimed runnable. This file has NOT been validated by an actual
+compile/import check in a QuantConnect-compatible runtime -- that runtime
+is unavailable in this environment (see qc_probe/README.md for the exact
+Docker/network findings). `AlgorithmImports` is installable from PyPI
+(`pip install lean`, which pulls in `quantconnect-stubs`), but that package
+provides only a `.pyi` TYPE-STUB file with no runtime content -- `from
+AlgorithmImports import *` "succeeds" without error but binds zero names
+(confirmed directly: QCAlgorithm/Resolution/Action all raise NameError
+after that import in a plain Python interpreter). So only a syntax-level
+check (`ast.parse`, done by verify_instrumentation.py) has been performed
+here -- not a real compile/import validation, and not proof this runs
+correctly inside QuantConnect. The minimal callback_order_probe.py remains
+the primary and SUFFICIENT artifact for determining the callback order; it
+has no external logic dependencies beyond the QC scheduler itself and does
+not carry this file's unverified-runnability caveat.
 
-How to run:
+Purpose (once actually run on a real QC account): settle experimentally
+which callback (Reset or rebalance) executes first on a day where
+QuantConnect's scheduler fires both (MonthStart, AfterMarketOpen) -- see
+docs/author-decision-semantics.md, section 6, "open question". The logs
+record, for each such day: callback name, self.Time, switch_before,
+switch_after (and, for rebalance(), which branch was taken).
+
+How to run (on your own QuantConnect account -- untested here, see above):
   1. Paste as Main.py into a QuantConnect Python project (needs hmmlearn,
-     scipy available in your QC Python environment -- this is unchanged
-     from the author's original requirements).
+     scipy available in your QC Python environment -- unchanged from the
+     author's original requirements). If your project scaffold requires a
+     specific algorithm class name, rename HMMHybridInstrumented below --
+     QC discovers the QCAlgorithm subclass by inheritance, not by a fixed
+     name, but confirm this against your own project template if unsure.
   2. Run a backtest (dates below match the author's original SetStartDate/
      SetEndDate -- change only if you want a different observation window;
      the callback-order question does not depend on which dates you pick).
@@ -33,6 +59,8 @@ Do NOT modify the algorithmic logic below when adapting this for your
 account -- if you need to change dates/cash/etc., only touch the clearly
 non-logic lines (SetStartDate/SetEndDate/SetCash), not the branching.
 """
+
+from AlgorithmImports import *
 
 import operator
 from math import ceil, floor

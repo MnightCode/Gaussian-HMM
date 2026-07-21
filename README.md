@@ -285,20 +285,33 @@ reading the source; it requires an actual QuantConnect backtest. **This
 environment cannot run one** — checked directly, not assumed: the Docker
 daemon is unavailable (`docker.sock` missing) and `www.quantconnect.com` is
 blocked by this environment's egress policy (confirmed via the proxy status
-log). `qc_probe/` contains two ready-to-run files for a QuantConnect account
-(free tier is enough):
+log). `qc_probe/` contains:
 
-- `callback_order_probe.py` — minimal probe: two identically-scheduled
-  callbacks that only log their name and `self.Time`.
+- `callback_order_probe.py` — the **primary, sufficient** artifact: a
+  minimal probe with two identically-scheduled callbacks that only log
+  their name and `self.Time`; no other dependencies, so it carries none of
+  the caveats below.
 - `hmm_hybrid_instrumented.py` — the author's original algorithm with
-  logging added at `Reset()`/`rebalance()` entry/exit ONLY (every addition
-  marked `# --- LOG ... ---`; no algorithmic logic changed).
+  logging added at `Reset()`/`rebalance()` entry/exit only. **Not**
+  byte-for-byte identical (class renamed, `AlgorithmImports` added,
+  logging added) — precisely: *the algorithmic branches are intended to
+  match the supplied author source; instrumentation and compatibility
+  imports/class wrapper were added.* This is checked mechanically by
+  `qc_probe/verify_instrumentation.py` (parses both files with `ast`,
+  strips only the marked logging statements at any nesting depth, and
+  diffs the rest) — currently **PASS** for both methods. **Not claimed
+  runnable**: `AlgorithmImports` installs from PyPI as a `.pyi`
+  type-stub-only package with no runtime content (confirmed directly —
+  `QCAlgorithm`/`Resolution`/`Action` all raise `NameError` after
+  importing it in plain Python), so only a syntax-level parse has been
+  done here, not a real compile/import check in a QC-compatible runtime.
 
-See `qc_probe/README.md` for exact run instructions. Until the actual order
-is reported back, **neither** `reset_before_rebalance` nor
-`rebalance_before_reset` is canonical — both remain candidates (their chart
-titles say so explicitly), and no numerical conclusion about whether the
-model "sees" the visible 2022+ market phases is drawn from either.
+See `qc_probe/README.md` for exact run instructions and the full
+verification detail. Until the actual order is reported back, **neither**
+`reset_before_rebalance` nor `rebalance_before_reset` is canonical — both
+remain candidates (their chart titles say so explicitly), and no numerical
+conclusion about whether the model "sees" the visible 2022+ market phases
+is drawn from either.
 
 ## Empirical minimum window (`probe_min_bars.py`)
 
