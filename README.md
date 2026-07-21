@@ -207,6 +207,72 @@ Produces:
 No conclusions about which order is "correct" are drawn — this only measures
 the exact boundary of the ambiguity.
 
+## Portfolio intervals, execution charts, and the 2022+ defensive-interval report
+
+Three more tools build on the execution replay above — still **no new HMM
+run**, still **no manually-specified phase dates**. Everything comes from
+where `portfolio_after` actually changed.
+
+**`execution_intervals.py`** collapses each execution file (`_daily_only`,
+`_reset_before_rebalance`, `_rebalance_before_reset`) into continuous
+`portfolio_model` intervals — a new interval starts only when `portfolio_after`
+itself changes (a `neutral` day inside an interval does not split it):
+
+```bash
+for scenario in daily_only reset_before_rebalance rebalance_before_reset; do
+  python execution_intervals.py --execution reports/execution_${scenario}.csv \
+      --price-csv data/spy_raw_d1.csv --price-field Close \
+      --order-differences reports/execution_order_differences.csv \
+      --out reports/intervals_${scenario}.csv
+done
+```
+
+Each row: `portfolio_model, start_date, end_date, trading_days, start_close,
+end_close, return_pct, max_drawdown_pct, opening_raw_decision, opening_action,
+overlaps_order_uncertainty` (SPY-close return/drawdown over the interval; the
+last flag is true if any day in the interval appears in
+`execution_order_differences.csv`).
+
+**`plot_execution_timeline.py`** draws SPY close with continuous
+GROWTH/FAMA_FRENCH background zones (from the daily-only intervals),
+vertical lines only at actual `portfolio_after` changes, Reset-order
+uncertainty days marked with `×`, and raw `bull`/`bear`/`neutral` in a
+separate strip below the price panel (never overlapping the price line) —
+full history and a 2022-01-01+ zoom, from the same underlying data:
+
+```bash
+python plot_execution_timeline.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --execution reports/execution_daily_only.csv \
+    --intervals reports/intervals_daily_only.csv \
+    --order-differences reports/execution_order_differences.csv \
+    --out-full reports/execution_timeline_full.png \
+    --out-zoom reports/execution_timeline_2022_zoom.png
+```
+
+**`report_2022_defensive_intervals.py`** lists every `FAMA_FRENCH` interval
+touching 2022-01-01 or later, per scenario, with its immediate preceding and
+following `GROWTH` interval — intervals are **not** pre-labeled "bear
+phases"; the reader judges alignment with visible SPY drawdowns from the
+chart and this table together:
+
+```bash
+python report_2022_defensive_intervals.py --intervals-dir reports --out-dir reports
+```
+
+**The three scenarios do not agree.** On the real (raw-close) dataset:
+daily-only produces just **2** FAMA_FRENCH intervals touching 2022+ (one
+1028-trading-day block from 2022-02-14 to the end of the dataset — no later
+`bull` ever fires to close it); `reset_before_rebalance` produces **17**
+shorter intervals (362 total defensive days); `rebalance_before_reset`
+produces **22** (341 total defensive days). The monthly `Reset()` is why:
+it re-applies GROWTH/FAMA_FRENCH from `switch` at every MonthStart regardless
+of a fresh signal, so a single stray `bear` day no longer locks the portfolio
+indefinitely the way it does under daily-only alone. Which of these three
+pictures — one long defensive lock-in, or frequent short defensive
+re-entries — is "what the model saw" therefore depends entirely on an
+ambiguity in the source (the Reset/rebalance firing order) that is not
+resolved by the code alone.
+
 ## Empirical minimum window (`probe_min_bars.py`)
 
 `MIN_BARS` is **not** an assumed constant — it comes from probing real SPY

@@ -1,0 +1,3 @@
+start_date,end_date,trading_days,return_pct,max_drawdown_pct,overlaps_order_uncertainty,preceding_growth_start,preceding_growth_end,following_growth_start,following_growth_end
+2021-09-29,2022-02-03,89,2.7966394291633176,9.727659040003344,True,2021-06-10,2021-09-28,2022-02-04,2022-02-11
+2022-02-14,2026-03-20,1028,47.731310646439816,22.74726465171704,True,2022-02-04,2022-02-11,,
