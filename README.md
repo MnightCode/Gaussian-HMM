@@ -78,6 +78,22 @@ Normalized confidence ratios: vol_ratio (>=0.3?), ret_ratio (>=0.5?)
 DECISION: BEAR | BULL | NEUTRAL
 ```
 
+## Replay & stability (`replay.py`)
+
+Runs the model on a REAL adjusted SPY CSV across known regimes (calm bull, COVID
+crash, 2022 bear, modern market, current date) as causal as-of dates, repeating
+each fit N times to probe the run-to-run variability that follows from **not**
+fixing `random_state`:
+
+```bash
+python replay.py --csv spy_adj.csv --repeats 20
+python replay.py --csv spy_adj.csv --asof 2020-03-23     # single date
+```
+
+For each period it reports the decision distribution over the repeats, a
+stability %, and the bear/bull mean-return and confidence-ratio ranges. A low
+stability % means the regime call itself flips between identical runs.
+
 ## Tests
 
 Network-free causal-acceptance tests (synthetic adjusted CSVs):
