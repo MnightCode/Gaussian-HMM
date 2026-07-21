@@ -269,7 +269,7 @@ def _closes_from_yahoo(ticker, asof, n_bars):
     if asof is not None:
         d = pd.Timestamp(asof).normalize()
     else:
-        d = pd.Timestamp.utcnow().normalize()
+        d = pd.Timestamp.now(tz="UTC").normalize()
     start = (d - pd.Timedelta(days=span_days)).date()
     end = d.date()   # yfinance end is EXCLUSIVE -> excludes the bar dated D itself
 
@@ -327,12 +327,18 @@ def _closes_from_csv(csv_path, asof, price_field):
                 "is required; raw 'Close' is NOT substituted automatically. "
                 "To force a specific column, pass --price-field <name>.")
 
-    df[date_col] = pd.to_datetime(df[date_col])
+    # Normalise dates to tz-naive UTC so comparison never mixes naive/aware.
+    # A plain 'YYYY-MM-DD' CSV is tz-naive; Timestamp.now(tz="UTC") is tz-aware,
+    # and comparing the two raises TypeError -- hence the explicit unification.
+    df[date_col] = pd.to_datetime(df[date_col], utc=True).dt.tz_convert(None)
     df = df.sort_values(date_col)
-    # Decision date D = asof if given, else today. Only bars STRICTLY before D
-    # (identical guarantee to the Yahoo path; without this, latest-mode could
-    # pick up a row dated today or in the future).
-    d = pd.Timestamp(asof).normalize() if asof is not None else pd.Timestamp.utcnow().normalize()
+
+    # Decision date D = asof if given, else today (UTC). Only bars STRICTLY < D.
+    d = pd.Timestamp(asof) if asof is not None else pd.Timestamp.now(tz="UTC")
+    if d.tzinfo is not None:
+        d = d.tz_convert("UTC").tz_localize(None)
+    d = d.normalize()
+
     df = df[df[date_col] < d]
     closes = [float(x) for x in df[price_col].dropna().tolist()]
     return closes

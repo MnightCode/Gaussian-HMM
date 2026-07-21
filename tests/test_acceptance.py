@@ -65,10 +65,12 @@ class CausalAcceptance(unittest.TestCase):
 
     def test_latest_mode_excludes_today_and_future(self):
         """The reported residual defect: CSV latest-mode must be strictly < today."""
-        today = pd.Timestamp.utcnow().normalize()
-        # Business days ending a week in the FUTURE, so the CSV contains today
-        # and future rows; plenty of history precedes today.
-        dates = pd.bdate_range(end=today + pd.Timedelta(days=7), periods=4300)
+        # tz-NAIVE UTC today, like a real 'YYYY-MM-DD' CSV export (no +00:00).
+        today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+        # Business days ending a week in the FUTURE, written as plain date
+        # strings, so the CSV contains today and future rows (tz-naive).
+        dates = pd.bdate_range(end=today + pd.Timedelta(days=7),
+                               periods=4300).strftime("%Y-%m-%d")
         csv = os.path.join(self.tmp, "spy_future.csv")
         ref = _write_csv(csv, dates, with_adj=True)
 
@@ -81,6 +83,23 @@ class CausalAcceptance(unittest.TestCase):
         last_used_date = ref.loc[ref["val"] == closes[-1], "Date"].iloc[-1]
         self.assertLess(last_used_date, today,
                         "last used bar must be strictly before today")
+
+    def test_naive_date_csv_does_not_raise(self):
+        """Regression: tz-naive 'YYYY-MM-DD' CSV must not raise TypeError.
+
+        A real TradingView/Yahoo export has plain dates (no +00:00). Comparing
+        those against a tz-aware 'now' used to raise
+        'Invalid comparison between dtype=datetime64 and Timestamp'.
+        """
+        dates = pd.bdate_range("2008-01-02", periods=3000).strftime("%Y-%m-%d")
+        csv = os.path.join(self.tmp, "spy_naive.csv")
+        _write_csv(csv, dates, with_adj=True)
+        # latest-mode (asof=None) is the path that mixes naive CSV vs aware now.
+        closes = H.load_closes("SPY", None, H.HISTORY_BARS, csv_path=csv)
+        self.assertEqual(len(closes), 2718)
+        # and an explicit naive asof string must also work.
+        closes2 = H.load_closes("SPY", "2019-01-02", H.HISTORY_BARS, csv_path=csv)
+        self.assertEqual(len(closes2), 2718)
 
     # --- Window / features ----------------------------------------------------
     def test_window_2718_to_2708_observations(self):
