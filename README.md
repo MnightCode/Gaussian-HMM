@@ -122,14 +122,50 @@ python plot_daily_decisions.py --price-csv data/spy_raw_d1.csv --price-field Clo
     --out reports/daily_replay_daily.png
 ```
 
-Outputs `<prefix>_timeline.csv` — one row per decision day, all columns raw:
-`n_bars`, `n_obs`, `today_regime`, `bear_state`, `bull_state`, `vol_ratio`,
-`ret_ratio`, `raw_decision`, `error`. `plot_daily_decisions.py` marks each
-`bear`/`bull` day directly on the price chart (neutral days, the majority,
-are left unmarked) — a literal picture of the raw daily sequence, nothing
-latched or carried forward. Per-day fits are parallelized (independent given
-the immutable price series); results are written back out in day order
-regardless of worker completion order.
+Outputs `<prefix>_timeline.csv` — one row per decision day: `decision_date`,
+`last_bar_used`, `n_bars`, `n_obs`, `today_regime`, `bear_state`, `bull_state`,
+`vol_ratio`, `ret_ratio`, `confidence_pass`, `raw_decision`,
+`previous_raw_decision`, `decision_changed`, `transition_type`, `error` — and
+`<prefix>_transitions.csv`, the same columns filtered to `decision_changed=true`.
+`plot_daily_decisions.py` marks each day's raw_decision directly on the price
+chart (bear=red, bull=green, neutral=gray dot) plus a larger marker at every
+`decision_changed` date (color=target state, shape=source state; the legend
+spells out all six `transition_type` names) — a literal picture of the raw
+daily sequence and its literal day-to-day changes, nothing latched or carried
+forward. Per-day fits are parallelized (independent given the immutable price
+series); results are written back out in day order regardless of worker
+completion order.
+
+## Window-size sweep (`--window`, `compare_windows.py`)
+
+`hmm_daily_replay.py --window N` trains each day's fit on a **rolling** window
+of the trailing N bars instead of all history (`--window` omitted). Window
+size is treated as **a parameter to sweep, not a fixed constant** — neither
+"all history" nor any particular rolling size (including the paper's ~2718) is
+assumed correct. The all-history run raised a concrete question: does folding
+2000/2008/2020 into every single day's fit, forever, suppress the model's
+ability to recognize a 'bull' regime on a much later, calmer slice of data?
+Comparing several rolling sizes against all-history is how that gets answered
+instead of asserted.
+
+```bash
+for w in 1000 2000 3000 5000; do
+  python hmm_daily_replay.py --csv data/spy_raw_d1.csv --price-field Close \
+      --window $w --out-prefix reports/daily_replay_w$w --workers 4
+done
+
+python compare_windows.py \
+    --prefixes reports/daily_replay_w1000 reports/daily_replay_w2000 \
+               reports/daily_replay_w3000 reports/daily_replay_w5000 reports/daily_replay \
+    --labels w1000 w2000 w3000 w5000 all-history \
+    --out reports/window_comparison.csv
+```
+
+`compare_windows.py` aggregates each window's `raw_decision` distribution
+overall and within four eras (2008 GFC, 2020 COVID, 2022, 2023-2025 rally) —
+a pure count of the three literal outputs per era per window size, nothing
+about "markets". See `reports/window_comparison.csv` for the recorded sweep
+(raw close, all caveats from the data-source section below still apply).
 
 ## Empirical minimum window (`probe_min_bars.py`)
 
