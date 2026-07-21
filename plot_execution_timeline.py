@@ -1,28 +1,27 @@
 """
-Plot SPY price with the daily-only execution replay's continuous
-portfolio_model zones, actual change markers, raw bull/bear/neutral dots
-(in a separate strip, never overlapping price), and Reset-order uncertainty
-days highlighted separately. NO new HMM run, NO manually-specified phase
-dates -- every visual element comes directly from already-computed CSVs:
-  reports/daily_replay_timeline.csv        (raw_decision per day)
-  reports/execution_daily_only.csv          (portfolio_after per day)
-  reports/intervals_daily_only.csv          (continuous zones, from
-                                              execution_intervals.py)
-  reports/execution_order_differences.csv   (Reset-order uncertainty days)
+Plot SPY price with an execution replay's continuous portfolio_model zones,
+actual change markers, raw bull/bear/neutral dots (in a separate strip,
+never overlapping price), and Reset-order uncertainty days highlighted
+separately. NO new HMM run, NO manually-specified phase dates -- every
+visual element comes directly from already-computed CSVs.
 
-Produces two PNGs from the SAME underlying data (only the x-axis range
-differs), so they are guaranteed consistent with each other:
-  --out-full  : entire dataset
-  --out-zoom  : 2022-01-01 through the end of the dataset
+Scenario-agnostic: pass --scenario to select which execution/intervals pair
+to plot (daily_only / reset_before_rebalance / rebalance_before_reset). Use
+the SAME price series, axes, and visual rules across all three calls so the
+resulting charts are directly comparable -- never mix scenarios into one
+chart. --scenario daily_only is titled as an explicit CONTROL run (the
+author's monthly Reset() is not part of it); the two Reset-order scenarios
+are titled as candidates whose firing order is not yet confirmed against
+QuantConnect (see docs/callback-order-probe.md).
 
-Usage:
+Usage (repeat once per scenario, identical price/order-differences inputs):
   python plot_execution_timeline.py \
       --price-csv data/spy_raw_d1.csv --price-field Close \
       --execution reports/execution_daily_only.csv \
       --intervals reports/intervals_daily_only.csv \
       --order-differences reports/execution_order_differences.csv \
-      --out-full reports/execution_timeline_full.png \
-      --out-zoom reports/execution_timeline_2022_zoom.png
+      --scenario daily_only \
+      --out-zoom reports/execution_timeline_2022_daily_only.png
 """
 
 import argparse
@@ -104,17 +103,29 @@ def plot_pair(price, raw_df, intervals, uncertain_dates, out_path, xlim, title):
     print(f"wrote {out_path}")
 
 
+SCENARIO_ANNOTATION = {
+    "daily_only": "CONTROL SCENARIO -- author's monthly Reset() OMITTED",
+    "reset_before_rebalance": "FULL EXECUTION -- Reset() BEFORE rebalance() (order not yet confirmed by QC)",
+    "rebalance_before_reset": "FULL EXECUTION -- rebalance() BEFORE Reset() (order not yet confirmed by QC)",
+}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Plot execution timeline: portfolio zones + raw decisions.")
     ap.add_argument("--price-csv", required=True)
     ap.add_argument("--price-field", default=None)
     ap.add_argument("--execution", required=True,
-                    help="execution_daily_only.csv (for raw_decision per day).")
+                    help="execution_<scenario>.csv (for raw_decision per day).")
     ap.add_argument("--intervals", required=True,
-                    help="intervals_daily_only.csv from execution_intervals.py.")
+                    help="intervals_<scenario>.csv from execution_intervals.py.")
     ap.add_argument("--order-differences", required=True)
-    ap.add_argument("--out-full", required=True)
+    ap.add_argument("--scenario", required=True,
+                    choices=list(SCENARIO_ANNOTATION),
+                    help="Which scenario this is -- controls the title annotation "
+                         "(daily_only is explicitly labeled CONTROL/no-Reset).")
     ap.add_argument("--out-zoom", required=True)
+    ap.add_argument("--out-full", default=None,
+                    help="Optional full-history PNG in addition to the zoom.")
     ap.add_argument("--zoom-start", default="2022-01-01")
     args = ap.parse_args(argv)
 
@@ -136,15 +147,18 @@ def main(argv=None):
     diffs = pd.read_csv(args.order_differences)
     uncertain_dates = diffs["decision_date"].tolist()
 
-    full_xlim = (price.index.min(), price.index.max())
-    plot_pair(price, raw_df, intervals, uncertain_dates, args.out_full, full_xlim,
-             "Execution timeline (daily-only): SPY + portfolio_model zones + raw decisions "
-             "[FULL HISTORY, raw close, TEMPORARY dataset]")
+    annotation = SCENARIO_ANNOTATION[args.scenario]
+    base_title = (f"Execution timeline [{args.scenario}] -- {annotation}\n"
+                 f"SPY + portfolio_model zones + raw decisions (raw close, TEMPORARY dataset)")
+
+    if args.out_full:
+        full_xlim = (price.index.min(), price.index.max())
+        plot_pair(price, raw_df, intervals, uncertain_dates, args.out_full, full_xlim,
+                 base_title + "  [FULL HISTORY]")
 
     zoom_xlim = (pd.Timestamp(args.zoom_start), price.index.max())
     plot_pair(price, raw_df, intervals, uncertain_dates, args.out_zoom, zoom_xlim,
-             f"Execution timeline (daily-only): SPY + portfolio_model zones + raw decisions "
-             f"[{args.zoom_start} -> end, raw close, TEMPORARY dataset]")
+             base_title + f"  [{args.zoom_start} -> end]")
     return 0
 
 

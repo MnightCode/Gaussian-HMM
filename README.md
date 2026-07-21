@@ -234,19 +234,24 @@ last flag is true if any day in the interval appears in
 `execution_order_differences.csv`).
 
 **`plot_execution_timeline.py`** draws SPY close with continuous
-GROWTH/FAMA_FRENCH background zones (from the daily-only intervals),
-vertical lines only at actual `portfolio_after` changes, Reset-order
-uncertainty days marked with `×`, and raw `bull`/`bear`/`neutral` in a
-separate strip below the price panel (never overlapping the price line) —
-full history and a 2022-01-01+ zoom, from the same underlying data:
+GROWTH/FAMA_FRENCH background zones, vertical lines only at actual
+`portfolio_after` changes, Reset-order uncertainty days marked with `×`, and
+raw `bull`/`bear`/`neutral` in a separate strip below the price panel (never
+overlapping the price line). Scenario-agnostic — run once per scenario with
+identical price/order-differences inputs so the three charts are directly
+comparable; `--scenario` controls the title annotation (`daily_only` is
+explicitly titled **CONTROL — author's Reset() omitted**; the two Reset-order
+scenarios are titled as candidates whose firing order is not yet confirmed):
 
 ```bash
-python plot_execution_timeline.py --price-csv data/spy_raw_d1.csv --price-field Close \
-    --execution reports/execution_daily_only.csv \
-    --intervals reports/intervals_daily_only.csv \
-    --order-differences reports/execution_order_differences.csv \
-    --out-full reports/execution_timeline_full.png \
-    --out-zoom reports/execution_timeline_2022_zoom.png
+for scenario in daily_only reset_before_rebalance rebalance_before_reset; do
+  python plot_execution_timeline.py --price-csv data/spy_raw_d1.csv --price-field Close \
+      --execution reports/execution_${scenario}.csv \
+      --intervals reports/intervals_${scenario}.csv \
+      --order-differences reports/execution_order_differences.csv \
+      --scenario ${scenario} \
+      --out-zoom reports/execution_timeline_2022_${scenario}.png
+done
 ```
 
 **`report_2022_defensive_intervals.py`** lists every `FAMA_FRENCH` interval
