@@ -100,26 +100,34 @@ as-of date (or "today") equals the last available bar in a static dataset.
 
 Runs the model for **every trading day** in the dataset (from the empirical
 `MIN_BARS` floor onward), each time training on ALL history strictly before
-that day. Derives a **persistent directional state** (bear/bull decisions set
-it; neutral/error decisions hold the previous state) and records the exact
-date of every actual BULL→BEAR / BEAR→BULL transition:
+that day, and records the model's **raw** output for that day: exactly one of
+`bear` / `bull` / `neutral`, straight from `train()`. Nothing is derived from
+it -- no persistence, no latching, no "state that carries forward on neutral",
+no "transition events". An earlier version of this tool computed such a
+derived state and drew conclusions from it (e.g. "stuck in BEAR for 4 years");
+that was Claude's own interpretation layered on top of the model, not
+something the author's `train()` computes or exposes, and it has been
+withdrawn -- see git history. Do not reintroduce that layer without first
+verifying against the author's exact execution code what (if anything)
+`neutral` does beyond being one of the three raw outputs.
 
 ```bash
 python hmm_daily_replay.py --csv data/spy_raw_d1.csv --price-field Close \
     --out-prefix reports/daily_replay --workers 4
 
-python plot_switches.py --price-csv data/spy_raw_d1.csv --price-field Close \
-    --switches reports/daily_replay_switches.csv \
-    --out reports/daily_replay_switches.png
+python plot_daily_decisions.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --timeline reports/daily_replay_timeline.csv \
+    --out reports/daily_replay_daily.png
 ```
 
-Outputs `<prefix>_timeline.csv` (one row per decision day: `n_bars`, `n_obs`,
-`today_regime`, `bear_state`, `bull_state`, `vol_ratio`, `ret_ratio`,
-`raw_decision`, `persistent_state`, `error`) and `<prefix>_switches.csv` (one
-row per actual transition, with the SPY close at that date for plotting).
-Per-day fits are parallelized (independent given the immutable price series);
-persistent-state/switch derivation is a single sequential pass afterward so
-causal ordering is exact regardless of worker completion order.
+Outputs `<prefix>_timeline.csv` — one row per decision day, all columns raw:
+`n_bars`, `n_obs`, `today_regime`, `bear_state`, `bull_state`, `vol_ratio`,
+`ret_ratio`, `raw_decision`, `error`. `plot_daily_decisions.py` marks each
+`bear`/`bull` day directly on the price chart (neutral days, the majority,
+are left unmarked) — a literal picture of the raw daily sequence, nothing
+latched or carried forward. Per-day fits are parallelized (independent given
+the immutable price series); results are written back out in day order
+regardless of worker completion order.
 
 ## Empirical minimum window (`probe_min_bars.py`)
 
