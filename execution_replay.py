@@ -50,8 +50,25 @@ Outputs (via main(), from a real timeline file):
                                               or reset_action differ between
                                               A and B
 
+MonthStart determination requires the FULL trading calendar, not just the
+(possibly warm-up-truncated) decision timeline: if replay starts mid-month
+(e.g. after a MIN_BARS cut), that first row is NOT a true MonthStart -- the
+real first trading day of that month occurred earlier, outside the replay's
+scope, and its Reset() (if any) already happened before day 1 here. See
+is_month_start_flags(); main() loads the full price CSV for this reason.
+
+EXPLICIT ASSUMPTION: the author's actual condition is
+`self.Portfolio.TotalHoldingsValue == 0`; this replay uses `portfolio_model
+== NONE` as an exact proxy for it. The two are equivalent ONLY under the
+assumption that once GrowthModel()/FamaFrench() is called for the first
+time, the portfolio never becomes empty again through any OTHER path in the
+strategy (there is no such path in the given source, but this replay does
+not attempt to simulate order fills, liquidations, or margin calls -- it
+is a proxy, not a proof).
+
 Usage:
   python execution_replay.py --timeline reports/daily_replay_timeline.csv \
+      --price-csv data/spy_raw_d1.csv --price-field Close \
       --out-prefix reports/execution
 """
 
@@ -118,21 +135,38 @@ def simulate_daily_rebalance(decisions):
     return rows
 
 
-def is_month_start_flags(dates):
-    """dates: list of 'YYYY-MM-DD' strings, chronological.
+def is_month_start_flags(decision_dates, full_calendar_dates):
+    """Determine MonthStart against the FULL trading calendar, not just the
+    (possibly warm-up-truncated) decision timeline.
 
-    Returns a bool per date: True where that date is the FIRST trading day of
-    its (year, month) present in THIS sequence -- matching QuantConnect's
-    MonthStart schedule semantics for the trading days that actually exist
-    in the dataset (not the calendar's first day of month, which may not be
-    a trading day).
+    A decision day D is a true MonthStart iff the immediately preceding
+    trading day in the FULL price calendar belongs to a different (year,
+    month) than D -- i.e. D is genuinely the first trading day of its month,
+    matching QuantConnect's DateRules.MonthStart("SPY") semantics. This is
+    NOT the same as "first occurrence of this month within the decision
+    timeline": if the decision timeline starts mid-month (e.g. after a
+    MIN_BARS warm-up cut), that first row is NOT a MonthStart -- the real
+    first trading day of that month occurred earlier, before replay began,
+    and any Reset() for it would already have fired outside this replay's
+    scope.
+
+    decision_dates: 'YYYY-MM-DD' strings, the (possibly truncated) sequence
+      being replayed -- every one of these MUST appear in full_calendar_dates.
+    full_calendar_dates: 'YYYY-MM-DD' strings, ascending, the COMPLETE trading
+      calendar (e.g. every row of the source price CSV), used only to look up
+      each decision day's true previous trading day.
     """
+    full_index = {d: i for i, d in enumerate(full_calendar_dates)}
     flags = []
-    seen = set()
-    for d in dates:
-        ym = d[:7]  # 'YYYY-MM'
-        flags.append(ym not in seen)
-        seen.add(ym)
+    for d in decision_dates:
+        idx = full_index.get(d)
+        if idx is None:
+            raise ValueError(f"decision date {d} not found in the full calendar")
+        if idx == 0:
+            flags.append(True)   # the very first trading day ever -- trivial month start
+        else:
+            prev = full_calendar_dates[idx - 1]
+            flags.append(d[:7] != prev[:7])
     return flags
 
 
@@ -242,8 +276,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Deterministic execution replay over an existing daily timeline.")
     ap.add_argument("--timeline", required=True,
                     help="<...>_timeline.csv from hmm_daily_replay.py (already computed).")
+    ap.add_argument("--price-csv", required=True,
+                    help="Full price CSV (same one the timeline was built from) -- needed "
+                         "to determine true MonthStart days against the FULL trading "
+                         "calendar, not just the (warm-up-truncated) decision timeline.")
+    ap.add_argument("--price-field", default=None,
+                    help="CSV price column override, same convention as the other tools.")
     ap.add_argument("--out-prefix", default="reports/execution")
     args = ap.parse_args(argv)
+
+    import hmm_standalone as H
+    full_dates_raw, _ = H.series_from_csv(args.price_csv, args.price_field)
+    full_dates = [d.strftime("%Y-%m-%d") for d in full_dates_raw]
 
     tl = pd.read_csv(args.timeline)
     dates = tl["decision_date"].tolist()
@@ -255,7 +299,7 @@ def main(argv=None):
     _write_csv(f"{args.out_prefix}_daily_only.csv", DAILY_FIELDS, daily_out)
 
     # --- Two Reset-order scenarios ---
-    month_flags = is_month_start_flags(dates)
+    month_flags = is_month_start_flags(dates, full_dates)
     rows_a = simulate_with_reset(decisions, month_flags, reset_before_rebalance=True)
     rows_b = simulate_with_reset(decisions, month_flags, reset_before_rebalance=False)
     out_a = [{"decision_date": d, **r} for d, r in zip(dates, rows_a)]

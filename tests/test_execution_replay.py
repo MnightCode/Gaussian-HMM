@@ -137,15 +137,51 @@ class PrecheckHandWorkedExamples(unittest.TestCase):
 
 
 class MonthStartFlags(unittest.TestCase):
-    def test_first_occurrence_per_month_is_flagged(self):
+    """is_month_start_flags() must check the day BEFORE D in the FULL trading
+    calendar, not just the first occurrence of D's month within a (possibly
+    truncated) decision-date list -- a truncated timeline starting mid-month
+    must NOT be flagged as MonthStart on its first row."""
+
+    def test_full_calendar_no_truncation_flags_true_month_starts(self):
+        # decision_dates == full_calendar_dates (no truncation): behaves like
+        # "first occurrence of this month", since there IS no earlier history.
         dates = ["2020-01-02", "2020-01-03", "2020-02-03", "2020-02-04", "2020-03-02"]
-        flags = E.is_month_start_flags(dates)
+        flags = E.is_month_start_flags(dates, dates)
         self.assertEqual(flags, [True, False, True, False, True])
 
     def test_single_month_only_first_day_flagged(self):
         dates = ["2020-05-01", "2020-05-02", "2020-05-03"]
-        flags = E.is_month_start_flags(dates)
+        flags = E.is_month_start_flags(dates, dates)
         self.assertEqual(flags, [True, False, False])
+
+    def test_truncated_timeline_first_row_mid_month_is_not_month_start(self):
+        """Required regression test: full price calendar 2000-03-01..2000-03-15
+        (real March 2000 business days), decision timeline starts 2000-03-15
+        (as if after a MIN_BARS warm-up cut) -- 2000-03-15 must NOT be flagged
+        MonthStart, because the true first trading day of March 2000 was
+        2000-03-01, well before the decision timeline begins."""
+        import pandas as pd
+        full_calendar_dates = pd.bdate_range("2000-03-01", "2000-03-15").strftime("%Y-%m-%d").tolist()
+        self.assertEqual(full_calendar_dates[0], "2000-03-01")
+        self.assertIn("2000-03-15", full_calendar_dates)
+
+        decision_dates = ["2000-03-15"]   # timeline truncated to start here
+        flags = E.is_month_start_flags(decision_dates, full_calendar_dates)
+        self.assertEqual(flags, [False])
+
+    def test_truncated_timeline_starting_exactly_on_true_month_start_is_flagged(self):
+        """Sanity check the fix doesn't overcorrect to always False: if the
+        decision timeline happens to start EXACTLY on the true first trading
+        day of a month, it IS a genuine MonthStart."""
+        import pandas as pd
+        full_calendar_dates = pd.bdate_range("2000-02-01", "2000-03-05").strftime("%Y-%m-%d").tolist()
+        decision_dates = ["2000-03-01"]   # the real first trading day of March
+        flags = E.is_month_start_flags(decision_dates, full_calendar_dates)
+        self.assertEqual(flags, [True])
+
+    def test_missing_decision_date_in_full_calendar_raises(self):
+        with self.assertRaises(ValueError):
+            E.is_month_start_flags(["2099-01-01"], ["2000-01-01", "2000-01-02"])
 
 
 class ResetOrderScenarios(unittest.TestCase):

@@ -1,5 +1,4 @@
 decision_date,raw_decision,monthly_reset_today,switch_after_A,switch_after_B,portfolio_after_A,portfolio_after_B,daily_action_A,daily_action_B,reset_action_A,reset_action_B
-2000-03-15,bear,True,bear,bear,FAMA_FRENCH,FAMA_FRENCH,APPLY_FAMA_FRENCH,APPLY_FAMA_FRENCH,APPLY_GROWTH,APPLY_FAMA_FRENCH
 2000-08-01,neutral,True,neutral,neutral,FAMA_FRENCH,GROWTH,NONE,NONE,APPLY_FAMA_FRENCH,APPLY_GROWTH
 2000-08-02,neutral,False,neutral,neutral,FAMA_FRENCH,GROWTH,NONE,NONE,NONE,NONE
 2000-08-03,neutral,False,neutral,neutral,FAMA_FRENCH,GROWTH,NONE,NONE,NONE,NONE

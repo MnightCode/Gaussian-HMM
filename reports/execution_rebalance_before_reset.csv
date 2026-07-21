@@ -1,5 +1,5 @@
 decision_date,raw_decision,switch_before,switch_after,portfolio_before,portfolio_after,daily_action,monthly_reset_today,reset_action
-2000-03-15,bear,neutral,bear,NONE,FAMA_FRENCH,APPLY_FAMA_FRENCH,True,APPLY_FAMA_FRENCH
+2000-03-15,bear,neutral,bear,NONE,FAMA_FRENCH,APPLY_FAMA_FRENCH,False,NONE
 2000-03-16,neutral,bear,neutral,FAMA_FRENCH,FAMA_FRENCH,NONE,False,NONE
 2000-03-17,bull,neutral,bull,FAMA_FRENCH,GROWTH,APPLY_GROWTH,False,NONE
 2000-03-20,neutral,bull,neutral,GROWTH,GROWTH,NONE,False,NONE
