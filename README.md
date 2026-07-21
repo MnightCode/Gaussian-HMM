@@ -278,6 +278,28 @@ re-entries — is "what the model saw" therefore depends entirely on an
 ambiguity in the source (the Reset/rebalance firing order) that is not
 resolved by the code alone.
 
+## Callback-order probe (`qc_probe/`) — STATUS: PENDING
+
+The Reset()/rebalance() firing-order ambiguity above is not resolved by
+reading the source; it requires an actual QuantConnect backtest. **This
+environment cannot run one** — checked directly, not assumed: the Docker
+daemon is unavailable (`docker.sock` missing) and `www.quantconnect.com` is
+blocked by this environment's egress policy (confirmed via the proxy status
+log). `qc_probe/` contains two ready-to-run files for a QuantConnect account
+(free tier is enough):
+
+- `callback_order_probe.py` — minimal probe: two identically-scheduled
+  callbacks that only log their name and `self.Time`.
+- `hmm_hybrid_instrumented.py` — the author's original algorithm with
+  logging added at `Reset()`/`rebalance()` entry/exit ONLY (every addition
+  marked `# --- LOG ... ---`; no algorithmic logic changed).
+
+See `qc_probe/README.md` for exact run instructions. Until the actual order
+is reported back, **neither** `reset_before_rebalance` nor
+`rebalance_before_reset` is canonical — both remain candidates (their chart
+titles say so explicitly), and no numerical conclusion about whether the
+model "sees" the visible 2022+ market phases is drawn from either.
+
 ## Empirical minimum window (`probe_min_bars.py`)
 
 `MIN_BARS` is **not** an assumed constant — it comes from probing real SPY

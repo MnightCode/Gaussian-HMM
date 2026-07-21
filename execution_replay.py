@@ -35,6 +35,10 @@ the source alone (flagged as an open question in
 docs/author-decision-semantics.md) -- so two scenarios are run and diffed:
   Scenario A: Reset() fires BEFORE that day's rebalance().
   Scenario B: rebalance() fires BEFORE that day's Reset().
+See qc_probe/ for a minimal, runnable QuantConnect probe that settles this
+experimentally (status: PENDING as of this writing -- this environment
+cannot itself run a QC backtest; Docker daemon unavailable and
+quantconnect.com blocked by egress policy, both confirmed directly).
 Reset() itself does NOT modify switch -- only portfolio_model, based on
 whatever switch is at the moment it fires:
 
