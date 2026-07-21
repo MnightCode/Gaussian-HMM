@@ -12,8 +12,12 @@ This module ONLY reproduces the regime signal (bear / bull / neutral). It does
 NOT implement the factor portfolios and it does NOT integrate any external
 system. It is intended to be used later as a directional filter.
 
-Faithful-replication constraints honoured here (do not change):
-  * Window: request 2718 completed D1 bars -> 2708 observations after warm-up.
+Faithful-replication constraints (feature formulas, HMM config and decision are
+verbatim from the author's code). ONE deliberate deviation: the training window.
+  * Window: use ALL available completed history strictly before D (NOT the
+    paper's fixed ~2718-bar window -- that count is intentionally dropped per
+    requirement). Only a technical MIN_BARS floor applies; actual n_bars / n_obs
+    are always reported.
   * Feature order in each observation: [Volatility, Return].
   * Volatility = (1/10) * sum_{j=0..9} (MA10 - close_{i-j})^2   (population MSE).
   * Return    = ((close_t - close_{t-1}) / close_{t-1}) * 100    (percent).
@@ -54,14 +58,21 @@ import scipy.stats
 
 from hmmlearn import hmm
 
-# --- Constants fixed by the author's code (do NOT tune) ----------------------
+# --- Constants from the author's code (do NOT tune) --------------------------
 HIDDEN_STATES = 3
 EM_ITERATIONS = 75
-HISTORY_BARS = 2718        # self.History(self.symbols, 2718, Resolution.Daily)
-WARMUP = 10                # first 10 bars dropped -> 2708 observations
-EXPECTED_OBS = HISTORY_BARS - WARMUP  # 2708
+WARMUP = 10                # first 10 bars are warm-up and dropped
 VOL_THRESHOLD = 0.3        # normalized PDF ratio threshold for volatility
 RET_THRESHOLD = 0.5        # normalized PDF ratio threshold for daily return
+
+# Training window: use ALL available completed history strictly before D.
+# The paper's fixed ~2718-bar window is intentionally NOT used -- binding the
+# window to that count is a deliberate non-goal here. MIN_BARS is a purely
+# TECHNICAL floor (~1 trading year) for a stable 3-state full-cov fit plus the
+# per-regime KS fits; it is NOT taken from the paper. Actual n_bars / n_obs are
+# always reported.
+MIN_BARS = 252
+DEFAULT_START = "1993-01-01"   # SPY inception; Yahoo path pulls from here to D
 
 
 # --- Distribution class: verbatim from the author's code ---------------------
@@ -252,25 +263,23 @@ def train(Volatility, Return):
 
 
 # --- Data loading ------------------------------------------------------------
-def _closes_from_yahoo(ticker, asof, n_bars):
-    """Adjusted daily closes, using only bars STRICTLY BEFORE the decision date.
+def _closes_from_yahoo(ticker, asof, start_date):
+    """Adjusted daily closes: ALL history from `start_date` up to (but not incl.) D.
 
     * Prices are Yahoo's dividend/split-adjusted close ('Adj Close'), matching
       QuantConnect's default adjusted data normalization. Raw close is not used.
     * `asof` (or 'today' when asof is None) is the decision date D. Because the
       author's train() runs after the market open, D's own close is unknown, so
-      only completed bars dated < D are returned.
+      only completed bars dated < D are returned. No fixed bar-count window.
     """
     import pandas as pd
     import yfinance as yf
 
-    # Wide enough lookback to guarantee >= n_bars trading days.
-    span_days = int(n_bars * 1.6) + 500
     if asof is not None:
         d = pd.Timestamp(asof).normalize()
     else:
         d = pd.Timestamp.now(tz="UTC").normalize()
-    start = (d - pd.Timedelta(days=span_days)).date()
+    start = pd.Timestamp(start_date).date()
     end = d.date()   # yfinance end is EXCLUSIVE -> excludes the bar dated D itself
 
     data = yf.download(ticker, start=start, end=end, interval="1d",
@@ -344,24 +353,27 @@ def _closes_from_csv(csv_path, asof, price_field):
     return closes
 
 
-def load_closes(ticker, asof, n_bars, csv_path=None, price_field=None):
-    """Return exactly the last `n_bars` completed adjusted daily closes for D.
+def load_closes(ticker, asof, csv_path=None, price_field=None,
+                start_date=DEFAULT_START, min_bars=MIN_BARS):
+    """Return ALL completed daily closes strictly before the decision date D.
 
-    Guarantees no lookahead: only bars dated STRICTLY BEFORE the decision date
-    (asof, or today when asof is None) are ever considered -- D's own close is
-    not yet known when train() runs after the open -- then the most recent
-    n_bars are kept. Prices are the adjusted close.
+    No fixed-window truncation: the model trains on the entire available history
+    up to D (asof, or today when asof is None). Guarantees no lookahead -- D's
+    own close is never included. Enforces only a TECHNICAL floor (`min_bars`,
+    not from the paper) so the HMM/KS fits have enough points. Prices are the
+    adjusted close by default (raw only via an explicit --price-field override).
     """
     if csv_path:
         closes = _closes_from_csv(csv_path, asof, price_field)
     else:
-        closes = _closes_from_yahoo(ticker, asof, n_bars)
+        closes = _closes_from_yahoo(ticker, asof, start_date)
 
-    if len(closes) < n_bars:
+    if len(closes) < min_bars:
         raise RuntimeError(
-            f"Need {n_bars} completed daily bars but only {len(closes)} available "
-            f"up to {asof or 'latest'}. Widen the history or pick a later --asof.")
-    return closes[-n_bars:]
+            f"Only {len(closes)} completed daily bars available up to "
+            f"{asof or 'latest'}; need at least the technical minimum of "
+            f"{min_bars}. Provide more history or pick a later date.")
+    return closes
 
 
 # --- Reporting ---------------------------------------------------------------
@@ -370,7 +382,8 @@ def format_report(result, ticker, asof):
     lines.append("=" * 64)
     lines.append(f"Regime-Switching HMM (standalone replica)  ticker={ticker}")
     lines.append(f"as-of: {asof or 'latest completed bar'}   "
-                 f"obs={result['n_obs']} (expected {EXPECTED_OBS})")
+                 f"n_bars={result['n_obs'] + WARMUP}  n_obs={result['n_obs']}  "
+                 f"(all history to D; warm-up {WARMUP} dropped)")
     lines.append("=" * 64)
     lines.append("Hidden states (mean return / mean volatility / #days / emission means):")
     for i in range(result["n_states"]):
@@ -424,7 +437,7 @@ def main(argv=None):
         warnings.filterwarnings("ignore")
 
     try:
-        closes = load_closes(args.ticker, args.asof, HISTORY_BARS,
+        closes = load_closes(args.ticker, args.asof,
                              csv_path=args.csv, price_field=args.price_field)
     except Exception as exc:
         print(f"error: could not load {args.ticker} data: {exc}", file=sys.stderr)
@@ -434,9 +447,6 @@ def main(argv=None):
         return 2
 
     _, Volatility, Return = compute_features(closes)
-    assert len(Volatility) == EXPECTED_OBS == len(Return), (
-        f"expected {EXPECTED_OBS} observations, got {len(Volatility)}")
-
     result = train(Volatility, Return)
 
     if args.json:

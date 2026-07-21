@@ -1,41 +1,48 @@
-# Data contract — SPY adjusted daily bars
+# Data contract — SPY daily bars
 
-Drop the SPY dataset here as **`data/spy_adj_d1.csv`**. `replay.py` /
-`hmm_standalone.py` consume it via `--csv data/spy_adj_d1.csv`.
+Drop the SPY dataset here. `replay.py` / `hmm_standalone.py` consume it via
+`--csv data/<file>.csv`.
+
+## Windowing rule (important)
+
+The model trains on **ALL available completed history strictly before the
+decision date D** — there is **no fixed 2718-bar window** (binding to the
+paper's bar count is intentionally dropped). Whatever history the file provides
+is used in full: 2,000 rows → 2,000 are used; 8,000 → 8,000. The only floor is a
+**technical minimum** (`MIN_BARS`, ~1 trading year) needed for a stable fit; it
+is not taken from the paper. The tools always report the actual `n_bars` /
+`n_obs`.
 
 ## Required format
 
-- **File:** `data/spy_adj_d1.csv`
-- **Instrument:** `SPY` (SPDR S&P 500 ETF Trust), daily (1D), regular session.
 - **Columns (header required):**
   - `Date` — `YYYY-MM-DD` (tz-naive is fine).
-  - `Adj Close` — **split + dividend ADJUSTED** close (matches QuantConnect's
-    default adjusted normalization). Aliases accepted: `adj_close`, `adjclose`,
-    `adjusted close`. A raw `Close` is **not** accepted silently.
+  - A close column. **Preferred:** an **adjusted** close (`Adj Close` and
+    aliases `adj_close`, `adjclose`, `adjusted close`) — matches QuantConnect's
+    default. A raw `Close` is **not** used silently; to run on raw close pass
+    `--price-field Close` explicitly.
 - One row per trading day, sorted ascending, no duplicates, no blank rows.
-- **Range:** from `2003-01-01` (or earlier) to today. There must be **≥ 2718**
-  trading days *before* each replay date (2017-06-01, 2020-03-23, 2022-06-16,
-  2025-06-02), else that period is skipped.
+- Range: as much history as available (earlier start = more regimes covered).
 
-Minimal example:
+## Files currently in this folder
 
-```csv
-Date,Adj Close
-2003-01-02,63.94
-2003-01-03,64.02
-```
+- `spy_raw_d1.csv` — SPY ETF daily **raw** close, ~2000→2025 (source:
+  investing.com export via a public GitHub mirror). Raw, not dividend-adjusted;
+  run it with `--price-field Close`. Good for full-range regime coverage
+  (2008 GFC, COVID, 2022 bear, modern). For strict adjusted fidelity, drop an
+  `Adj Close` series here instead (see producer below).
 
-## Easiest producer (run where the network is reachable)
+## Adjusted producer (run where the network is reachable)
 
 ```python
 import yfinance as yf
-yf.download("SPY", start="2003-01-01", auto_adjust=False)["Adj Close"] \
+yf.download("SPY", start="1993-01-01", auto_adjust=False)["Adj Close"] \
     .to_csv("data/spy_adj_d1.csv")
 ```
 
-## Sanity checks before committing
+## Sanity checks
 
-- ~250 rows per year (≈ 5700+ rows for 2003→2025).
+- ~250 rows per year.
 - Dates strictly increasing, no month-long gaps.
-- Values numeric; adjusted (older values noticeably lower than raw due to
-  dividends) — that confirms it is Adj Close, not raw Close.
+- Values numeric; if adjusted, older values are noticeably lower than raw due to
+  dividends (confirms it is Adj Close, not raw Close).

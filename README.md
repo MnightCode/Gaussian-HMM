@@ -12,7 +12,9 @@ discrepancies are in [`docs/hmm-paper-analysis.md`](docs/hmm-paper-analysis.md).
 
 ## What it does (and does not)
 
-- ✅ Loads the last **2718 completed daily bars** of SPY → **2708 observations**.
+- ✅ Trains on **ALL available completed history strictly before D** (no fixed
+  2718-bar window — that paper count is intentionally dropped); only a technical
+  `MIN_BARS` floor applies, and actual `n_bars` / `n_obs` are reported.
 - ✅ Builds each observation strictly as **`[Volatility, Return]`** (vol first).
 - ✅ `Return  = ((close_t − close_{t−1}) / close_{t−1}) · 100` (percent, simple).
 - ✅ `Volatility = (1/10) · Σ_{j=0..9} (MA10 − close_{i−j})²` (population MSE vs SMA10).
@@ -104,8 +106,10 @@ python -m unittest discover -s tests -v
 
 They cover: as-of excludes D's own close; weekend falls back to the last prior
 trading bar; **latest-mode is strictly before today** (excludes today/future
-rows); 2718 → 2708; feature formulas and `[Volatility, Return]` order; adjusted
-column required (raw `Close` not silently substituted); and insufficient history
+rows); **all history is used, not truncated to a fixed window**; a technical
+`MIN_BARS` floor is enforced; `n_obs = n_bars − warm-up`; feature formulas and
+`[Volatility, Return]` order; adjusted column required (raw `Close` not silently
+substituted, explicit `--price-field` allowed); and insufficient history
 is refused.
 
 ## Data source

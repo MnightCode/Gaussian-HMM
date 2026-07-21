@@ -43,7 +43,7 @@ def run_window(closes, repeats):
     for _ in range(repeats):
         r = H.train(vol, ret)
         runs.append(r)
-    return runs, len(vol)
+    return runs, len(vol), len(closes)
 
 
 def summarise(runs):
@@ -80,6 +80,9 @@ def main(argv=None):
                     help="Runs per as-of date to probe non-determinism (default 20).")
     ap.add_argument("--asof", default=None,
                     help="Run a single as-of date instead of the default period set.")
+    ap.add_argument("--price-field", default=None,
+                    help="CSV price column override (e.g. Close for a raw series). "
+                         "Default: require an adjusted-close column.")
     args = ap.parse_args(argv)
 
     periods = ([("as-of", args.asof)] if args.asof is not None else DEFAULT_PERIODS)
@@ -91,16 +94,18 @@ def main(argv=None):
 
     for label, asof in periods:
         try:
-            closes = H.load_closes("SPY", asof, H.HISTORY_BARS, csv_path=args.csv)
+            # ALL available history strictly before D (no fixed-bar window).
+            closes = H.load_closes("SPY", asof, csv_path=args.csv,
+                                   price_field=args.price_field)
         except Exception as exc:
             print(f"\n[{label}]  as-of={asof or 'latest'}  SKIPPED: {exc}")
             continue
 
-        runs, n_obs = run_window(closes, args.repeats)
+        runs, n_obs, n_bars = run_window(closes, args.repeats)
         s = summarise(runs)
         verdict = ("STABLE" if s["distinct"] == 1
                    else f"UNSTABLE ({s['distinct']} distinct)")
-        print(f"\n[{label}]  as-of={asof or 'latest'}   obs={n_obs}")
+        print(f"\n[{label}]  as-of={asof or 'latest'}   n_bars={n_bars}  n_obs={n_obs}")
         print(f"  decisions over {len(runs)} runs : {s['counts']}")
         print(f"  modal decision           : {s['modal'].upper()}  "
               f"(stability {s['stability']*100:.0f}%)  -> {verdict}")
