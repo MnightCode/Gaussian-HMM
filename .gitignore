@@ -1,4 +1,6 @@
 .venv/
 __pycache__/
 *.pyc
+# Ignore stray CSVs (temp/test), but DO track committed datasets under data/.
 *.csv
+!data/*.csv
