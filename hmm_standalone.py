@@ -329,8 +329,11 @@ def _closes_from_csv(csv_path, asof, price_field):
 
     df[date_col] = pd.to_datetime(df[date_col])
     df = df.sort_values(date_col)
-    if asof is not None:
-        df = df[df[date_col] < pd.Timestamp(asof)]   # STRICTLY before D
+    # Decision date D = asof if given, else today. Only bars STRICTLY before D
+    # (identical guarantee to the Yahoo path; without this, latest-mode could
+    # pick up a row dated today or in the future).
+    d = pd.Timestamp(asof).normalize() if asof is not None else pd.Timestamp.utcnow().normalize()
+    df = df[df[date_col] < d]
     closes = [float(x) for x in df[price_col].dropna().tolist()]
     return closes
 

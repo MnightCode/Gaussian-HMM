@@ -78,6 +78,20 @@ Normalized confidence ratios: vol_ratio (>=0.3?), ret_ratio (>=0.5?)
 DECISION: BEAR | BULL | NEUTRAL
 ```
 
+## Tests
+
+Network-free causal-acceptance tests (synthetic adjusted CSVs):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+They cover: as-of excludes D's own close; weekend falls back to the last prior
+trading bar; **latest-mode is strictly before today** (excludes today/future
+rows); 2718 → 2708; feature formulas and `[Volatility, Return]` order; adjusted
+column required (raw `Close` not silently substituted); and insufficient history
+is refused.
+
 ## Data source
 
 The paper pulled the SPY ETF from **Yahoo Finance**, and QuantConnect serves
