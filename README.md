@@ -22,7 +22,11 @@ discrepancies are in [`docs/hmm-paper-analysis.md`](docs/hmm-paper-analysis.md).
   and the two **normalized** confidence thresholds:
   `vols[today]/Σvols ≥ 0.3` **and** `rets[today]/Σrets ≥ 0.5`.
 - ✅ Daily rolling retrain (each call trains on the most recent window).
-- ✅ Replay on any historical date **without lookahead** (`--asof`).
+- ✅ Uses the **adjusted** daily close (split+dividend adjusted), matching
+  QuantConnect's default data normalization.
+- ✅ Replay as of a decision date **D without lookahead**: only completed bars
+  **strictly before D** are used (`--asof`), because `train()` runs after the
+  open and D's own close is not yet known.
 - ❌ Does **not** implement the factor portfolios (Value / Fama–French).
 - ❌ Does **not** integrate any external system.
 - ❌ Does **not** fix `random_state`, change the window, or tune any parameter.
@@ -34,10 +38,11 @@ discrepancies are in [`docs/hmm-paper-analysis.md`](docs/hmm-paper-analysis.md).
   mean return, `bull` = anything else *when confident*, and `neutral` = the
   confidence filter did not pass (i.e. "hold / do nothing"). The middle hidden
   state collapses into `bull` when confident.
-- **Non-determinism is intentional.** `random_state` is not set, exactly as in
-  the original, so EM initialisation varies run-to-run. Hidden-state **indices**
-  may permute between runs, but the decision is derived from mean-return, not
-  from a fixed index, so it is robust to relabeling.
+- **Non-determinism is intentional and can change the decision.** `random_state`
+  is not set, exactly as in the original. EM re-initialises randomly each run and
+  may converge to a **different local optimum** — so between runs not only can the
+  hidden-state **indices** permute, the final `bear`/`bull`/`neutral` decision can
+  itself differ. Do **not** assume run-to-run stability.
 - **KS candidate list is copied verbatim** and includes `rayleigh` plus a
   duplicated `norm` — this matches the code, not the paper's 6-name list.
 
@@ -54,11 +59,11 @@ pip install -r requirements.txt
 # Live: latest completed bar (needs Yahoo Finance reachable):
 python hmm_standalone.py
 
-# Replay as of a historical date, no lookahead (only bars <= that date):
-python hmm_standalone.py --asof 2019-06-01
+# Replay as of a decision date D, no lookahead (only bars STRICTLY before D):
+python hmm_standalone.py --asof 2019-06-03
 
-# Offline / portable: closes from a CSV with columns Date,Close:
-python hmm_standalone.py --csv spy_daily.csv --asof 2019-06-01
+# Offline / portable: CSV with a Date column and an adjusted-close column:
+python hmm_standalone.py --csv spy_daily.csv --asof 2019-06-03
 
 # Machine-readable:
 python hmm_standalone.py --json
@@ -75,11 +80,13 @@ DECISION: BEAR | BULL | NEUTRAL
 
 ## Data source
 
-The paper pulled the SPY ETF from **Yahoo Finance**; `--csv` lets you feed the
-exact same series from any provider. `Close` is used as-is (no adjustment is
-applied by this script); if your provider's adjusted vs. raw close differs from
-what you intend, select the column you want with `--price-field`. This is a
-data-source choice, not a model parameter — the HMM configuration is fixed.
+The paper pulled the SPY ETF from **Yahoo Finance**, and QuantConnect serves
+**adjusted** (split+dividend) daily bars by default — so the reference series is
+the **adjusted close**. The Yahoo path uses `Adj Close`. The `--csv` path
+**requires an adjusted-close column** (`Adj Close` and common aliases); if none
+is present it errors out rather than silently falling back to a raw `Close`.
+`--price-field` exists only as an explicit override when you knowingly want a
+specific column. Raw TradingView `Close` is **not** the reference series.
 
 > ⚠️ In some locked-down/CI environments outbound access to Yahoo Finance is
-> blocked; use `--csv` there.
+> blocked; use `--csv` (with an adjusted-close column) there.

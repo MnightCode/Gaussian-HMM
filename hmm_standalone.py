@@ -17,8 +17,15 @@ Faithful-replication constraints honoured here (do not change):
   * Feature order in each observation: [Volatility, Return].
   * Volatility = (1/10) * sum_{j=0..9} (MA10 - close_{i-j})^2   (population MSE).
   * Return    = ((close_t - close_{t-1}) / close_{t-1}) * 100    (percent).
+  * Prices: ADJUSTED daily close (split+dividend adjusted), matching
+    QuantConnect's default; raw close is not the reference series.
+  * As-of: the decision date D uses only completed bars STRICTLY BEFORE D
+    (train() runs after the open, so D's close is not yet known).
   * GaussianHMM(n_components=3, covariance_type="full", n_iter=75); nothing else.
-  * random_state is NOT fixed (non-deterministic EM init, exactly as in the code).
+  * random_state is NOT fixed, exactly as in the code: EM re-initialises randomly
+    each run and may converge to a DIFFERENT local optimum -- so between runs not
+    only the state IDs can permute, the final decision can itself change. Do NOT
+    assume run-to-run stability.
   * Regime decision via per-regime Kolmogorov-Smirnov distribution fit + the two
     normalized confidence thresholds: vols[today]/sum>=0.3 AND rets[today]/sum>=0.5.
 
@@ -26,11 +33,12 @@ Usage:
   # live, latest completed bar (needs Yahoo Finance reachable):
   python hmm_standalone.py
 
-  # replay on any historical date, no lookahead (only bars <= that date):
-  python hmm_standalone.py --asof 2019-06-01
+  # replay as of a date D, NO lookahead: only completed bars STRICTLY BEFORE D:
+  python hmm_standalone.py --asof 2019-06-03
 
-  # offline / portable: load closes from a CSV with columns Date,Close:
-  python hmm_standalone.py --csv spy_daily.csv --asof 2019-06-01
+  # offline / portable: CSV needs a Date column and an ADJUSTED close column
+  # (Adj Close); raw Close is not the reference series:
+  python hmm_standalone.py --csv spy_daily.csv --asof 2019-06-03
 
   # machine-readable:
   python hmm_standalone.py --json
@@ -245,55 +253,95 @@ def train(Volatility, Return):
 
 # --- Data loading ------------------------------------------------------------
 def _closes_from_yahoo(ticker, asof, n_bars):
+    """Adjusted daily closes, using only bars STRICTLY BEFORE the decision date.
+
+    * Prices are Yahoo's dividend/split-adjusted close ('Adj Close'), matching
+      QuantConnect's default adjusted data normalization. Raw close is not used.
+    * `asof` (or 'today' when asof is None) is the decision date D. Because the
+      author's train() runs after the market open, D's own close is unknown, so
+      only completed bars dated < D are returned.
+    """
     import pandas as pd
     import yfinance as yf
 
     # Wide enough lookback to guarantee >= n_bars trading days.
     span_days = int(n_bars * 1.6) + 500
     if asof is not None:
-        asof_ts = pd.Timestamp(asof).normalize()
-        start = (asof_ts - pd.Timedelta(days=span_days)).date()
-        end = (asof_ts + pd.Timedelta(days=1)).date()   # yfinance end is exclusive
+        d = pd.Timestamp(asof).normalize()
     else:
-        today = pd.Timestamp.utcnow().normalize()
-        start = (today - pd.Timedelta(days=span_days)).date()
-        end = today.date()   # exclusive -> excludes today's incomplete bar
+        d = pd.Timestamp.utcnow().normalize()
+    start = (d - pd.Timedelta(days=span_days)).date()
+    end = d.date()   # yfinance end is EXCLUSIVE -> excludes the bar dated D itself
 
     data = yf.download(ticker, start=start, end=end, interval="1d",
                        auto_adjust=False, progress=False)
     if data is None or len(data) == 0:
         raise RuntimeError("Yahoo Finance returned no data (network/egress?).")
 
-    close = data["Close"]
-    if hasattr(close, "columns"):        # MultiIndex for single ticker
-        close = close.iloc[:, 0]
+    cols = data.columns
+    if isinstance(cols, pd.MultiIndex):
+        if "Adj Close" not in cols.get_level_values(0):
+            raise RuntimeError("Yahoo response has no 'Adj Close'; cannot build "
+                               "the adjusted reference series.")
+        close = data["Adj Close"].iloc[:, 0]
+    else:
+        if "Adj Close" not in cols:
+            raise RuntimeError("Yahoo response has no 'Adj Close'; cannot build "
+                               "the adjusted reference series.")
+        close = data["Adj Close"]
     closes = [float(x) for x in close.dropna().tolist()]
     return closes
 
 
+_ADJ_ALIASES = ("adj close", "adj_close", "adjclose", "adjusted close",
+                "adjusted_close", "adjustedclose", "adj. close")
+
+
 def _closes_from_csv(csv_path, asof, price_field):
+    """Adjusted daily closes from a CSV, using only bars STRICTLY BEFORE asof.
+
+    For 1:1 fidelity an ADJUSTED close column is required. If `price_field` is
+    given, that exact column is used (explicit user override). Otherwise an
+    adjusted-close column must exist; a raw 'Close' is NEVER silently
+    substituted -- a missing adjusted column is a hard error.
+    """
     import pandas as pd
     df = pd.read_csv(csv_path)
-    # Locate date and price columns tolerantly.
-    date_col = next((c for c in df.columns if c.lower() in ("date", "datetime", "timestamp")), None)
-    price_col = next((c for c in df.columns if c.lower() == price_field.lower()), None)
-    if price_col is None:
-        price_col = next((c for c in df.columns if c.lower() == "close"), None)
-    if date_col is None or price_col is None:
-        raise RuntimeError("CSV must have a Date column and a Close (or --price-field) column.")
+    lower = {c.lower(): c for c in df.columns}
+
+    date_col = next((lower[k] for k in ("date", "datetime", "timestamp") if k in lower), None)
+    if date_col is None:
+        raise RuntimeError("CSV must have a Date/Datetime/Timestamp column.")
+
+    if price_field is not None:
+        price_col = lower.get(price_field.lower())
+        if price_col is None:
+            raise RuntimeError(f"CSV has no column '{price_field}'. "
+                               f"Available columns: {list(df.columns)}")
+    else:
+        price_col = next((lower[a] for a in _ADJ_ALIASES if a in lower), None)
+        if price_col is None:
+            raise RuntimeError(
+                "CSV has no adjusted-close column (looked for one of "
+                f"{list(_ADJ_ALIASES)}). For 1:1 replication the adjusted close "
+                "is required; raw 'Close' is NOT substituted automatically. "
+                "To force a specific column, pass --price-field <name>.")
+
     df[date_col] = pd.to_datetime(df[date_col])
     df = df.sort_values(date_col)
     if asof is not None:
-        df = df[df[date_col] <= pd.Timestamp(asof)]
+        df = df[df[date_col] < pd.Timestamp(asof)]   # STRICTLY before D
     closes = [float(x) for x in df[price_col].dropna().tolist()]
     return closes
 
 
-def load_closes(ticker, asof, n_bars, csv_path=None, price_field="close"):
-    """Return exactly the last `n_bars` completed daily closes ending at `asof`.
+def load_closes(ticker, asof, n_bars, csv_path=None, price_field=None):
+    """Return exactly the last `n_bars` completed adjusted daily closes for D.
 
-    Guarantees no lookahead: only bars dated <= asof (or strictly before today
-    when asof is None) are ever considered, then the most recent n_bars are kept.
+    Guarantees no lookahead: only bars dated STRICTLY BEFORE the decision date
+    (asof, or today when asof is None) are ever considered -- D's own close is
+    not yet known when train() runs after the open -- then the most recent
+    n_bars are kept. Prices are the adjusted close.
     """
     if csv_path:
         closes = _closes_from_csv(csv_path, asof, price_field)
@@ -350,11 +398,14 @@ def main(argv=None):
         description="Standalone 1:1 replica of the author's SPY regime HMM train().")
     parser.add_argument("--ticker", default="SPY", help="ETF ticker (default SPY).")
     parser.add_argument("--asof", default=None,
-                        help="Replay as of YYYY-MM-DD (only bars <= this date; no lookahead).")
+                        help="Decision date D (YYYY-MM-DD). Uses only completed "
+                             "bars STRICTLY BEFORE D (D's close is unknown at the open).")
     parser.add_argument("--csv", default=None,
-                        help="Load closes from a CSV (Date,Close) instead of Yahoo Finance.")
-    parser.add_argument("--price-field", default="close",
-                        help="CSV price column name (default 'close').")
+                        help="Load closes from a CSV (needs a Date column and an "
+                             "adjusted-close column) instead of Yahoo Finance.")
+    parser.add_argument("--price-field", default=None,
+                        help="Override the CSV price column. Default: require an "
+                             "adjusted-close column; raw 'Close' is never used silently.")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a text report.")
     parser.add_argument("--quiet-warnings", action="store_true",
                         help="Suppress scipy/numpy fit warnings for cleaner output.")
