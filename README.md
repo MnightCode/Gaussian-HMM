@@ -169,6 +169,44 @@ detection (first/last matching decision, detection/exit delay, matching
 streak) requires an independently-approved ground-truth phase table — see
 `reports/market_phases_template.csv` and `docs/phase-matching-metrics.md`.
 
+## Execution replay (`execution_replay.py`) — portfolio-level, no new HMM run
+
+Replays the author's exact **portfolio-level** bookkeeping over an already-
+computed `<...>_timeline.csv` (no HMM refit). Three entities are kept
+strictly distinct (see `docs/author-decision-semantics.md` for the quoted
+source and full trace):
+
+- `raw_decision` — the HMM's daily output (`bull`/`bear`/`neutral`), unchanged.
+- `switch` — the author's `self.switch`; **literally becomes `'neutral'`**
+  when that's the day's decision (never held at a prior bull/bear value).
+- `portfolio_model` — `NONE`/`GROWTH`/`FAMA_FRENCH`, what's actually applied;
+  **unchanged on a `neutral` day** (the author's `rebalance()` returns before
+  calling either factor function) — this is the one thing that is genuinely
+  "sticky" through neutral, and only because the code simply doesn't touch it.
+
+```bash
+python execution_replay.py --timeline reports/daily_replay_timeline.csv \
+    --out-prefix reports/execution
+```
+
+Produces:
+- `<prefix>_daily_only.csv` — the daily `rebalance()` alone, fully determined,
+  no ambiguity.
+- `<prefix>_reset_before_rebalance.csv` / `<prefix>_rebalance_before_reset.csv`
+  — two scenarios for the monthly `Reset()`, which fires the same time of day
+  (`AfterMarketOpen`) as `rebalance()` on the first trading day of each month;
+  the true QuantConnect firing order between two same-time scheduled events
+  is **not established from source alone**, so both orders are simulated.
+- `<prefix>_order_differences.csv` — every day where `switch_after`,
+  `portfolio_after`, `daily_action`, or `reset_action` differs between the
+  two orders. A divergence can **cascade**: once the two scenarios' internal
+  state differs, it stays different until some later `bull`/`bear` day forces
+  both back into agreement — the diff file reports the full cascade, not just
+  the originating MonthStart day.
+
+No conclusions about which order is "correct" are drawn — this only measures
+the exact boundary of the ambiguity.
+
 ## Empirical minimum window (`probe_min_bars.py`)
 
 `MIN_BARS` is **not** an assumed constant — it comes from probing real SPY
