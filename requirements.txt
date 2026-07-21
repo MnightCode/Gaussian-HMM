@@ -1,0 +1,8 @@
+# Pinned to versions verified in development. hmmlearn/scipy versions affect
+# EM defaults and KS behaviour, so pin them for reproducible environments
+# (note: random_state is intentionally NOT fixed, per the author's code).
+numpy==2.4.6
+scipy==1.17.1
+hmmlearn==0.3.3
+pandas==3.0.3
+yfinance==1.5.1
