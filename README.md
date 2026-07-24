@@ -945,7 +945,7 @@ Variant 2 and Variants 1/3 is *exactly* Reset()'s isolated contribution.
 ```bash
 python raw_reversal_trades.py --reversal-points reports/reversal_points.csv --out reports/raw_reversal_trades.csv
 python leveraged_compounding.py --trades reports/raw_reversal_trades.csv --scenario raw_reversal_only --leverage 1.8 --out-dir reports
-python plot_three_way_decomposition.py --out reports/three_way_decomposition_chart.png
+python plot_three_way_decomposition.py --out-dir reports
 ```
 
 `tests/test_raw_reversal_trades.py` (3 tests) is the mandatory PRECHECK, a
@@ -954,16 +954,31 @@ hand-worked 2-trade sequence plus one open/unfinished phase, matching
 cross-checked against real `growth_phase_trades_daily_only.csv` and found
 identical, a correctness signal beyond the synthetic precheck alone.
 
+> **Correction applied.** `Max DD` was first computed from the exit-only
+> closed-trade equity (`leveraged_long_equity_<variant>.csv`), which
+> cannot see any decline between a trade's entry and exit. The real max
+> drawdown comes from the full daily mark-to-market equity curve (every
+> trading day, via `equity_stop_long_trades.build_daily_equity_curve`,
+> `stop_equity_pct=None`) — already the method used elsewhere in this
+> README for the no-stop equity-space baseline. No trade or P&L data
+> changed, only which equity series the drawdown is read from. See
+> `reports/three_way_decomposition_report.md` for the full writeup and
+> both the primary daily chart and the secondary closed-trade-only chart.
+
 **Results** (leverage 1.8x, start=100): raw reversal only / no-Reset — 42
-trades, final **281.19** (+181.19%). Author's full logic — 88 trades,
-final **708.17** (+608.17%, `reset_before_rebalance`); 97 trades, final
-**500.47** (+400.47%, `rebalance_before_reset`). **Literal answers:** the
-raw HMM signal alone is profitable in this overlay (+181.19%); the
-author's `Reset()` substantially improves the final result (more than
-doubles or triples it here); but `Reset()` also creates more transitions
-(88–97 vs. 42) and deepens the max drawdown (-65.6%/-61.3% vs. -40.4%) —
-it is a real trade-off, not unambiguously good or bad. Visually, the
-no-Reset curve leads until ~2013-2014; the Reset-driven curves overtake it
+trades, final **281.19** (+181.19%), daily max DD **-61.66%**. Author's
+full logic — 88 trades, final **708.17** (+608.17%, `reset_before_rebalance`),
+daily max DD **-79.52%**; 97 trades, final **500.47** (+400.47%,
+`rebalance_before_reset`), daily max DD **-78.09%**. **Literal answers:**
+the raw HMM signal alone is profitable in this overlay (+181.19%); the
+author's `Reset()` substantially improves the final result, but by
+different exact multiples per scenario — 708.17 / 281.19 = **2.52×** for
+`reset_before_rebalance` (more than doubles, does **not** triple), and
+500.47 / 281.19 = **1.78×** for `rebalance_before_reset` (does **not**
+double); `Reset()` also creates more transitions (88–97 vs. 42) and
+deepens the real daily max drawdown (-79.52%/-78.09% vs. -61.66%) — it is
+a real trade-off, not unambiguously good or bad. Visually, the no-Reset
+curve leads until ~2013-2014; the Reset-driven curves overtake it
 afterward and stay ahead through the end — most of Reset's net
 contribution comes from the post-2014 period, not the first 13 years.
 Full detail: `reports/three_way_decomposition_report.md`,

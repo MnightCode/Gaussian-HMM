@@ -1,5 +1,21 @@
 # Three-way decomposition: raw HMM signal vs. author's Reset() contribution
 
+> **Correction applied.** An earlier version of this report computed
+> `Max DD` from `leveraged_long_equity_<variant>.csv` — equity known only
+> at each trade's *close*. That is a **closed-trade drawdown**, not the
+> real maximum drawdown: it cannot see any decline that happens *between*
+> a trade's entry and exit. The real max drawdown must come from the full
+> daily mark-to-market equity curve (every trading day, including every
+> day inside an open position) — already computed and already tested by
+> `equity_stop_long_trades.build_daily_equity_curve` (used with
+> `stop_equity_pct=None`) for the two Reset scenarios, and now also run for
+> Variant 1/3. **No trade or P&L data was changed** — only which
+> already-computed equity series is read for the drawdown figure. The old
+> exit-only step curve is kept, relabeled, and clearly marked as not a
+> full equity curve (`three_way_decomposition_closed_trade_only_chart.png`).
+> The "Reset more than doubles/triples" line below was also imprecise and
+> is corrected to the exact multiples.
+
 **Question:** decompose the author's actual portfolio transitions into
 `raw-signal transitions + reset-induced transitions = actual portfolio
 transitions`, and compare three variants under the identical methodology
@@ -47,14 +63,16 @@ beyond the synthetic precheck.
 
 ## Results
 
-| variant | trades | final capital (leverage 1.8x, start=100) | compounded return |
-|---|---|---|---|
-| 1/3. Raw reversal only == author logic without Reset | 42 | 281.19 | **+181.19%** |
-| 2a. Author's full logic, `reset_before_rebalance` | 88 | 708.17 | **+608.17%** |
-| 2b. Author's full logic, `rebalance_before_reset` | 97 | 500.47 | **+400.47%** |
+| variant | trades | final capital (leverage 1.8x, start=100) | compounded return | **daily max DD** (real) | closed-trade DD (reference only, NOT max DD) |
+|---|---|---|---|---|---|
+| 1/3. Raw reversal only == author logic without Reset | 42 | 281.19 | **+181.19%** | **-61.66%** | -40.41% |
+| 2a. Author's full logic, `reset_before_rebalance` | 88 | 708.17 | **+608.17%** | **-79.52%** | -65.56% |
+| 2b. Author's full logic, `rebalance_before_reset` | 97 | 500.47 | **+400.47%** | **-78.09%** | -61.33% |
 
 Full machine-readable table: `reports/three_way_decomposition_summary.csv`.
-Equity curves: `reports/three_way_decomposition_chart.png`.
+**Primary equity curves (full daily mark-to-market):**
+`reports/three_way_decomposition_daily_chart.png`. Secondary, explicitly
+non-full reference: `reports/three_way_decomposition_closed_trade_only_chart.png`.
 
 ## Literal answers to the three questions asked
 
@@ -62,25 +80,33 @@ Equity curves: `reports/three_way_decomposition_chart.png`.
 1.8x — raw-сигнал сам по собі дає +181.19% (final capital 281.19 зі
 старту 100), без жодного Reset чи execution-логіки автора.
 
-**Чи покращує результат авторський Reset()?** Так, і суттєво: обидва
-сценарії з Reset дають більший прибуток (+608.2% і +400.5%) проти
-+181.2% без нього — Reset більш ніж подвоює (а в одному сценарії —
-більш ніж потроює) кінцевий результат на цій історії.
+**Чи покращує результат авторський Reset()?** Так, і суттєво, але не
+однаково для обох сценаріїв — точні множники фінального капіталу
+відносно Варіанту 1/3 (281.19):
+- `reset_before_rebalance`: 708.17 / 281.19 = **2.52×** (більш ніж
+  подвоює, **не** потроює).
+- `rebalance_before_reset`: 500.47 / 281.19 = **1.78×** (менше ніж
+  подвоює).
 
 **Чи саме Reset() створює зайві входи, просадку і шум?** Входи —
 однозначно так: Reset майже подвоює кількість угод (88–97 замість 42).
-Просадка — теж гірша з Reset: -65.6%/-61.3% (`leveraged_long_compounding_report.md`)
-проти -40.4% без нього. Тобто Reset одночасно і збільшує кількість
-переходів, і поглиблює просадку — але при цьому й суттєво піднімає
-кінцевий прибуток. Це не однозначно "шум" чи однозначно "користь" — це
-trade-off: більше транзакцій і глибша просадка ціною значно вищого
-кінцевого результату на цій конкретній історії.
+**Реальна щоденна max drawdown теж гірша з Reset: -79.52%/-78.09% проти
+-61.66% без нього** (порахована по повній щоденній mark-to-market
+equity, той самий метод, що вже підтверджений раніше для no-stop
+сценаріїв). Тобто Reset одночасно і збільшує кількість переходів, і
+поглиблює просадку — але при цьому й суттєво піднімає кінцевий прибуток.
+Це не однозначно "шум" чи однозначно "користь" — це trade-off: більше
+транзакцій і глибша просадка ціною вищого кінцевого результату (у різній
+мірі для двох сценаріїв) на цій конкретній історії.
 
-**Візуально на графіку:** до ~2013 крива без Reset (синя) здебільшого
-йде ВИЩЕ за криві з Reset (червона/жовтогаряча) — тобто в перші 13 років
-Reset скоріше шкодив. Після 2014 криві з Reset обганяють і залишаються
-вище до кінця періоду — основний внесок Reset у підсумковий результат
-приходить з другої половини вибірки (post-2014 bull run), не з першої.
+**Візуально на графіку (`three_way_decomposition_daily_chart.png`):** до
+~2013 крива без Reset (синя) здебільшого йде ВИЩЕ за криві з Reset
+(червона/жовтогаряча) — тобто в перші 13 років Reset скоріше шкодив.
+Після 2014 криві з Reset обганяють і залишаються вище до кінця періоду —
+основний внесок Reset у підсумковий результат приходить з другої
+половини вибірки (post-2014 bull run), не з першої. На повній щоденній
+кривій також видно суттєво глибші внутрішньоденні провали під час крахів
+2000-2003 і 2008-2009, яких не було видно на exit-only кривій.
 
 ## Caveat
 
