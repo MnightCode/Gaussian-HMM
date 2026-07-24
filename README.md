@@ -482,8 +482,18 @@ SPY execution charts.
 
 ## Profitability test of the reproduced regime signal (`regime_strategy_backtest.py`)
 
+> **Scope note.** This section answers "does the regime signal have value
+> as a full SPY/cash trading system (with execution timing, transaction
+> costs, and a trend benchmark)?" — a broader experiment than just scoring
+> the already-computed entry/exit points. For the narrower question "were
+> the already-computed `ENTER_DEFENSIVE`/`EXIT_DEFENSIVE` points themselves
+> directionally correct?", see **"Directional phase accuracy"** below,
+> which is the simpler, more direct answer to that specific question and
+> should be read first if that's what you're after. Kept here unmodified,
+> not superseded — it answers a real, different question.
+
 Since the author's own published numbers weren't sufficient for a
-profitability verdict (previous section), this tests the **already-
+profitability verdict (two sections up), this tests the **already-
 reproduced regime signal itself** — not the author's factor portfolio — as
 a plain SPY/cash overlay: `GROWTH → hold SPY`, `FAMA_FRENCH → hold cash`.
 No new HMM run, no change to `hmm_daily_replay.py` / `execution_replay.py`
@@ -533,3 +543,58 @@ QuantConnect callback-firing-order ambiguity as the rest of this project
 (`qc_probe/README.md`). Sharpe here uses a 0% risk-free rate (no local
 risk-free series, and fetching one is out of scope) — **not** comparable to
 the author's own reported 2.017.
+
+## Directional phase accuracy (`defensive_phase_accuracy.py`)
+
+The simplest possible question about the already-computed entry/exit
+points: pair each `ENTER_DEFENSIVE` with its next `EXIT_DEFENSIVE` (from
+`reports/execution_events_<scenario>.csv`, already produced by
+`execution_events.py` — not touched here), and check whether SPY's `Close`
+actually fell between those two already-fixed dates. No new execution lag,
+no next-day rule, no SMA, no benchmark, no cash overlay, no transaction
+costs, no HMM run — deliberately narrower than the SPY/cash-overlay section
+above, and independent of it (not built on top of `regime_strategy_backtest.py`).
+
+```
+spy_move_pct = (exit_price / entry_price - 1) * 100
+defensive_signal_result_pct = -spy_move_pct
+WIN  if defensive_signal_result_pct > 0   (SPY fell -> phase was directionally correct)
+LOSS otherwise                            (SPY rose -> phase cost potential upside)
+```
+
+```bash
+python defensive_phase_accuracy.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --events reports/execution_events_reset_before_rebalance.csv \
+    --scenario reset_before_rebalance --out-dir reports
+# repeat with rebalance_before_reset
+```
+
+Outputs: `reports/defensive_phase_trades_<scenario>.csv` (one row per
+completed phase: `entry_date`, `entry_price`, `exit_date`, `exit_price`,
+`spy_move_pct`, `defensive_signal_result_pct`, `win_or_loss`,
+`entry_trigger`, `exit_trigger`, plus two optional ALT next-trading-day
+price columns that never alter the main result),
+`reports/defensive_phase_plus_minus_summary.csv`, and
+`reports/defensive_phase_accuracy_report.md`.
+
+`tests/test_defensive_phase_accuracy.py` (10 tests) is the mandatory
+PRECHECK, run before any real data — a hand-worked 2-phase numeric trace,
+plus explicit coverage for an open/unfinished final phase (excluded from
+the summary, reported separately) and an "orphan" `EXIT_DEFENSIVE` with no
+preceding `ENTER_DEFENSIVE` (both scenarios start already in
+`FAMA_FRENCH`, so the very first `EXIT_DEFENSIVE` has nothing to pair
+with — excluded and counted separately, not silently dropped).
+
+**Result:** `reset_before_rebalance` — 88 completed phases, 38 wins / 50
+losses (43.2% win rate), arithmetic sum of per-phase results **-38.4%**.
+`rebalance_before_reset` — 97 completed phases, 41 wins / 56 losses (42.3%
+win rate), arithmetic sum **-59.9%**. In both scenarios, fewer than half
+the defensive phases were directionally correct, and the summed result is
+negative — losses outnumber wins more than they're individually larger.
+Best phase in both: 2008-09-24 → 2008-10-13 (the 2008 crisis, SPY fell
+sharply). Worst phase in both: 2009-03-06 → 2009-04-01 (the March 2009
+market bottom and immediate rebound, SPY rose sharply while the model was
+still defensive). **This measures directional timing accuracy only** — it
+is not a portfolio-profit claim, since the author's actual defensive
+holding (market-neutral Fama–French long/short) is not SPY and is not
+tested here or anywhere in this repo.
