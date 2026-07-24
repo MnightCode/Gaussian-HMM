@@ -598,3 +598,41 @@ still defensive). **This measures directional timing accuracy only** — it
 is not a portfolio-profit claim, since the author's actual defensive
 holding (market-neutral Fama–French long/short) is not SPY and is not
 tested here or anywhere in this repo.
+
+## Long SPY trades from the regime signal (`growth_phase_trades.py`)
+
+The mirror image of the section above: buy SPY on the "green" signal
+(`EXIT_DEFENSIVE` — entering `GROWTH`), close on the next "red" signal
+(`ENTER_DEFENSIVE` — leaving `GROWTH`). Same minimal rules as
+`defensive_phase_accuracy.py` (fixed event-date prices, no execution lag,
+no SMA/benchmark/costs, no HMM run) — but here the phase **is** the actual
+SPY holding, so the result is the literal long-trade P&L, **not negated**.
+
+```bash
+python growth_phase_trades.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --events reports/execution_events_reset_before_rebalance.csv \
+    --scenario reset_before_rebalance --out-dir reports
+# repeat with rebalance_before_reset
+```
+
+Outputs: `reports/growth_phase_trades_<scenario>.csv`,
+`reports/growth_phase_plus_minus_summary.csv`,
+`reports/growth_phase_trades_report.md`.
+`tests/test_growth_phase_trades.py` (10 tests, hand-worked trace) is the
+mandatory PRECHECK, including an explicit test that the result sign is
+**not** flipped here (the one detail that differs from
+`defensive_phase_accuracy.py`).
+
+**Result:** `reset_before_rebalance` — 88 completed trades, 44 wins / 44
+losses (50.0% win rate), arithmetic sum **+149.9%**.
+`rebalance_before_reset` — 97 completed trades, 48 wins / 49 losses (49.5%
+win rate), arithmetic sum **+132.3%**. Win rate is close to 50/50 by count
+in both scenarios, but average win (+6.7% / +6.3%) is noticeably larger
+than average loss (-3.3% / -3.5%) — roughly the opposite pattern from the
+defensive-phase result above (there, losses outnumbered wins by count but
+were similar in size). Best trade in both: 2012-01-03 → 2014-02-04
+(+37.6%, a multi-year bull run). Worst trade in both: 2001-01-26 →
+2001-07-17 (-10.3%, held long into the dot-com decline). This is the
+literal P&L of holding SPY between these already-fixed signal dates only —
+not a claim about the author's actual `GrowthModel` portfolio, which is a
+leveraged, factor-based long-only book, not a plain SPY holding.

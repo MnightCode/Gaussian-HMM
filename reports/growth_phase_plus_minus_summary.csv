@@ -1,0 +1,3 @@
+scenario,completed_phases,wins,losses,win_rate_pct,arithmetic_sum_result_pct,average_win_pct,average_loss_pct,median_result_pct,best_phase_result_pct,best_phase_entry_date,best_phase_exit_date,worst_phase_result_pct,worst_phase_entry_date,worst_phase_exit_date,open_unfinished_phase_entry_date,orphan_closes_excluded
+reset_before_rebalance,88,44,44,50.0,149.8961734851557,6.717592634466103,-3.310861418894382,-0.020929288153515024,37.56225734342522,2012-01-03,2014-02-04,-10.329346826126951,2001-01-26,2001-07-17,2026-03-02,0
+rebalance_before_reset,97,48,49,49.48453608247423,132.30003239275686,6.278453666750727,-3.450321298189347,-0.10773955134544266,37.56225734342522,2012-01-03,2014-02-04,-10.329346826126951,2001-01-26,2001-07-17,2026-03-02,0
