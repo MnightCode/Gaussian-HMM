@@ -11,6 +11,32 @@ guessed here.
 
 ## What's in this folder
 
+- **`Main.py`** — the literal `HMMHybrid` algorithm, ready to paste into a
+  QuantConnect Cloud IDE project as-is. The ONLY change from
+  `reference_original_hmm_hybrid.py` is a single added
+  `from AlgorithmImports import *` line (current QC Cloud projects require
+  it; the gist's bare style is from an older, pre-migration QC API) and a
+  module docstring. No SPY overlay, no stop/TP, no new state machine, no
+  logging, no class rename — every algorithmic line is untouched.
+  Mechanically verified against the reference file by
+  `verify_main.py` (whole-module `ast.dump()` comparison, not just the two
+  methods `verify_instrumentation.py` checks). Keeps the author's own
+  `SetStartDate(2017, 8, 30)` / `SetEndDate(2020, 4, 1)` — see
+  `docs/qc_lean_replication_audit.md` for why that ~2.5-year window matters
+  and what widening it later would mean. This is Step 1 of that audit's
+  technical plan.
+
+- **`verify_main.py`** — automated, mechanical equivalence check for
+  `Main.py` (whole module, not just two methods): parses both files with
+  `ast`, strips only the module docstring and the `AlgorithmImports` import
+  from `Main.py`'s parsed body, and confirms what remains is
+  `ast.dump()`-identical to `reference_original_hmm_hybrid.py`. Run it
+  yourself:
+
+  ```bash
+  python qc_probe/verify_main.py
+  ```
+
 - **`callback_order_probe.py`** — the primary, sufficient artifact. A
   minimal QC algorithm: two `Schedule.On` callbacks (`Reset`, `Rebalance`),
   same `DateRule` (`MonthStart("SPY")`) and `TimeRule`
@@ -102,6 +128,12 @@ cross-check if you want `switch`-level detail around the same event.
    `hmm_hybrid_instrumented.py` the same way and capture the
    `switch_before`/`switch_after`/`branch` log lines around a MonthStart
    day, to cross-check against the simple probe.
+3b. Alternatively: if you go straight to running **`Main.py`** (the literal
+   algorithm, see above and `docs/qc_lean_replication_audit.md`), its own
+   `self.Log(self.daily_return)` calls plus whatever QC's Logs tab shows for
+   `Reset()`/`rebalance()` firing order on a MonthStart date settle this
+   question directly from that run — no separate probe needed once `Main.py`
+   compiles and runs cleanly.
 4. Report the observed order back. Whichever order QuantConnect actually
    uses becomes the **canonical scenario**
    (`reports/execution_reset_before_rebalance.csv` /

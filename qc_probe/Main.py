@@ -1,26 +1,30 @@
-# REFERENCE ONLY -- not meant to be run, not part of the tool suite.
-#
-# This is the author's original HMMHybrid source EXACTLY as supplied by the
-# user earlier in this conversation (the GitHub gist pasted in full). It
-# exists solely as ground truth for qc_probe/verify_instrumentation.py's
-# automated AST-equivalence check against hmm_hybrid_instrumented.py.
-#
-# Canonical source, later confirmed by the user:
-# https://gist.github.com/Marblez/fbeba76537f74efbba681e24f92f4e81 (hmm.py)
-#
-# Treated as authoritative over a later WebFetch re-fetch of that same gist
-# page: WebFetch runs fetched HTML through a summarizing sub-model rather
-# than a raw byte fetch, and its extraction of train() differs structurally
-# from this file (indentation of the volatility/return computation relative
-# to `if not history.empty:` -- see docs/qc_lean_replication_audit.md
-# section 0 for the full AST-diff finding and its practical-impact
-# analysis). Direct raw fetch of the gist is blocked by this session's
-# egress policy, so this discrepancy could not be resolved byte-exactly
-# from inside this session; this file (the user's direct paste, not
-# summarized) is kept as ground truth.
+"""
+Literal HMMHybrid, ready to paste into a QuantConnect Cloud IDE project.
+
+Source of Truth: https://gist.github.com/Marblez/fbeba76537f74efbba681e24f92f4e81
+(hmm.py), matching qc_probe/reference_original_hmm_hybrid.py (see that
+file's header for the WebFetch cross-check and the one open indentation
+discrepancy in train(), neither of which is touched here). See
+docs/qc_lean_replication_audit.md for the full data-availability audit and
+run plan.
+
+The ONLY change from the reference file is the single import line below
+(`from AlgorithmImports import *`) -- required because current QC Cloud IDE
+projects need this explicit import; the gist's bare style
+(QCAlgorithm/Resolution/Action used without any local import) is from an
+older, pre-migration QC API where these were auto-imported. No algorithmic
+line below that import was added, removed, or reordered: no SPY long/cash
+overlay, no stop-loss/take-profit, no new state machine, no logging. Dates
+are kept as the author's own SetStartDate(2017, 8, 30) /
+SetEndDate(2020, 4, 1) -- this is the literal replication target, not a
+convenience default. Widening the date range is Step 4 in the audit doc,
+a separate and explicitly labeled experiment.
+"""
+
+from AlgorithmImports import *
 
 import operator
-from math import ceil, floor
+from math import ceil,floor
 import pandas as pd
 import scipy as scipy
 import numpy as np
