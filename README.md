@@ -278,6 +278,80 @@ re-entries — is "what the model saw" therefore depends entirely on an
 ambiguity in the source (the Reset/rebalance firing order) that is not
 resolved by the code alone.
 
+## Execution event semantics (`execution_events.py`, `plot_execution_events.py`)
+
+The charts above mark every `portfolio_after` change with the same vertical
+line, and every raw `bull`/`bear` day with the same dot in the raw-decision
+strip — that conflates a *phase transition* with a mere *same-phase
+confirmation*, and doesn't say whether a transition was caused by that day's
+`rebalance()` decision or by the monthly `Reset()`. `execution_events.py` is
+a **read-only derived layer** on top of the already-computed
+`execution_*.csv` files — it does **not** change `hmm_daily_replay.py`,
+`execution_replay.py`, or `execution_intervals.py`, and runs **no new HMM**.
+
+Every day is classified purely from the **literal**
+`portfolio_before -> portfolio_after` comparison (never from `raw_decision`
+alone — a raw `bull`/`bear` day is never by itself an "entry" or "exit") into
+one of eight mutually-exclusive `event_type`s, in this priority order:
+
+| `event_type` | condition |
+|---|---|
+| `INITIAL_ENTER_GROWTH` | `portfolio_before == 'NONE' -> 'GROWTH'` |
+| `INITIAL_ENTER_DEFENSIVE` | `portfolio_before == 'NONE' -> 'FAMA_FRENCH'` |
+| `ENTER_DEFENSIVE` | `'GROWTH' -> 'FAMA_FRENCH'` |
+| `EXIT_DEFENSIVE` | `'FAMA_FRENCH' -> 'GROWTH'` |
+| `BULL_CONFIRMATION` | `'GROWTH' -> 'GROWTH'` and `raw_decision == 'bull'` |
+| `BEAR_CONFIRMATION` | `'FAMA_FRENCH' -> 'FAMA_FRENCH'` and `raw_decision == 'bear'` |
+| `NEUTRAL_NO_PORTFOLIO_CHANGE` | portfolio unchanged and `raw_decision == 'neutral'` |
+| `NO_EVENT` | everything else (no-op day) |
+
+Each row also gets a `trigger` (`INITIALIZATION` / `RAW_DECISION` /
+`MONTHLY_RESET` / `NONE`), derived — never guessed — from the `daily_action`/
+`reset_action` columns already produced by `execution_replay.py`:
+`RAW_DECISION` if `daily_action != 'NONE'` (checked first), else
+`MONTHLY_RESET` if `reset_action != 'NONE'`, else `NONE` for
+confirmations/no-ops. If both callbacks act the same day, `trigger` resolves
+to `RAW_DECISION`, but `daily_action` and `reset_action` are **both** always
+kept as separate output columns — the dual impact is never hidden.
+
+```bash
+for scenario in daily_only reset_before_rebalance rebalance_before_reset; do
+  python execution_events.py --execution reports/execution_${scenario}.csv \
+      --out reports/execution_events_${scenario}.csv
+done
+```
+
+`plot_execution_events.py` draws SPY close with the same
+GROWTH/FAMA_FRENCH background zones as before (labeled explicitly as
+**"portfolio_model context"**, never as a market "trend"), and event markers
+whose shape encodes both direction and cause: `ENTER_DEFENSIVE` is a large
+downward marker, `EXIT_DEFENSIVE` a large upward marker;
+`BULL_CONFIRMATION`/`BEAR_CONFIRMATION` are small dots; and a
+**raw-decision-induced** transition (solid filled triangle) is always a
+visually distinct shape from a **Reset-induced** one (thin tripod glyph) —
+never a diamond-for-both, which was tried first and rejected after visually
+inspecting the rendered legend and finding the direction distinction lost.
+Neutral/no-event days draw **nothing** on the price panel, so they cannot be
+mistaken for a reversal.
+
+```bash
+python plot_execution_events.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --events reports/execution_events_reset_before_rebalance.csv \
+    --intervals reports/intervals_reset_before_rebalance.csv \
+    --scenario reset_before_rebalance \
+    --out reports/execution_events_2022_reset_before_rebalance.png
+# repeat with --scenario rebalance_before_reset
+```
+
+**Literal finding from the two canonical 2022+ event charts** (not a market
+conclusion — just what the classified data shows): in both callback-order
+scenarios, **100% of `MONTHLY_RESET`-triggered transitions are
+`EXIT_DEFENSIVE`** — `Reset()` alone never independently causes an entry into
+the defensive phase in this replay; every observed `ENTER_DEFENSIVE` is
+`RAW_DECISION`-triggered. `EXIT_DEFENSIVE` is triggered by `MONTHLY_RESET`
+more often than by `RAW_DECISION` in both scenarios (68 vs 21 for
+`reset_before_rebalance`; 80 vs 18 for `rebalance_before_reset`).
+
 ## Callback-order probe (`qc_probe/`) — STATUS: PENDING
 
 The Reset()/rebalance() firing-order ambiguity above is not resolved by
