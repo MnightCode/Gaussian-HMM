@@ -865,6 +865,20 @@ any execution/portfolio/trading script existed). No `persistent_state`, no
 leverage, no drawdown, no P&L, no benchmark, no SMA, no new HMM run, no
 new state machine — only the raw decision series itself.
 
+> **Status, recorded explicitly:** this is a separate, narrow control
+> experiment, not a replacement for the `ENTER_DEFENSIVE`/`EXIT_DEFENSIVE`
+> portfolio-transition layer above. The author's own `Reset()` genuinely
+> can flip the portfolio without a fresh raw signal (see
+> `reports/reversal_points_verification.md`'s "Status" section for the
+> exact mechanism and a real example) — so the 177 portfolio transitions
+> above are the legitimate count for "what the author's execution logic
+> did," not a distortion of this section's simpler 84-reversal count. Every
+> profitability/trade script in this repo (`growth_phase_trades.py`,
+> `defensive_phase_accuracy.py`, `leveraged_compounding.py`,
+> `equity_stop_long_trades.py`, etc.) is built on the
+> `ENTER_DEFENSIVE`/`EXIT_DEFENSIVE` layer, never on reversal points — the
+> two are not interchangeable and their P&L must not be mixed.
+
 Rule: `neutral` never creates an event and never updates the tracked
 directional state — only the last *non-neutral* value matters. A repeated
 `bull` (or `bear`), even across intervening `neutral` days, is not a new

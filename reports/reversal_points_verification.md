@@ -1,5 +1,48 @@
 # Reversal points verification — raw_decision only, no derived semantics
 
+## Status: relationship to execution_events.py (ENTER_DEFENSIVE/EXIT_DEFENSIVE)
+
+Recorded explicitly so it isn't lost: this file's `BEAR_TO_BULL`/
+`BULL_TO_BEAR` reversal points and `execution_events.py`'s
+`ENTER_DEFENSIVE`/`EXIT_DEFENSIVE` portfolio transitions are **two
+separate, both legitimate, non-interchangeable artifacts**:
+
+- **The author's actual model = portfolio transitions including
+  `Reset()`.** `ENTER_DEFENSIVE`/`EXIT_DEFENSIVE` (from
+  `execution_events.py`, built on `execution_replay.py`'s simulation of
+  the author's own `rebalance()` + monthly `Reset()`) is what the author's
+  code literally does. It is not a distortion: the author's own `Reset()`
+  (`if self.switch == 'bear': FamaFrench() else: GrowthModel()`, see
+  `docs/author-decision-semantics.md`) genuinely can flip the portfolio
+  without a fresh `bull` signal — when `self.switch` has drifted to
+  `'neutral'` after a run of neutral days, `Reset()`'s `else` branch fires
+  and forces `GrowthModel()`, exactly as if a `bull` had occurred. This is
+  in the author's code, not invented here. Checked directly
+  (`reset_before_rebalance`): only **21 of 42** `BEAR_TO_BULL` reversals
+  coincide with an `EXIT_DEFENSIVE` on the same day — the other exits are
+  `Reset()`-driven, with no fresh `bull` that day. All **42 of 42**
+  `BULL_TO_BEAR` reversals do coincide with an `ENTER_DEFENSIVE` (`Reset()`
+  never independently pushes the portfolio into defensive, only out of
+  it — confirmed earlier in `reports/execution_events_reset_before_rebalance.csv`'s
+  trigger breakdown). 177 portfolio transitions (88 `ENTER_DEFENSIVE` + 89
+  `EXIT_DEFENSIVE`, `reset_before_rebalance`) is the legitimate count for
+  "what the author's execution logic actually did" — not a distortion of
+  the simpler 84-reversal count below.
+- **Reversal points here are a separate, narrow control experiment** —
+  what the raw HMM signal alone did, with zero execution/portfolio
+  semantics. Useful on its own terms (this file), but it is **not** "the
+  author's truth" that the portfolio-transition count should be collapsed
+  down to. The author's algorithm never traded on raw reversals alone.
+- **Do not mix their P&L, and do not call one the other.** Any
+  profitability/trade analysis (`growth_phase_trades.py`,
+  `defensive_phase_accuracy.py`, `leveraged_compounding.py`,
+  `equity_stop_long_trades.py`, etc.) is built on `execution_events.py`'s
+  `ENTER_DEFENSIVE`/`EXIT_DEFENSIVE` (the portfolio-transition truth) —
+  none of it uses or should be re-derived from
+  `BEAR_TO_BULL`/`BULL_TO_BEAR`. This file's reversal points have no P&L
+  attached and should not gain one by conflating it with the execution
+  layer.
+
 ## 1. Base commit
 
 `f335566` (per the request's Hard Scope). Source data:
