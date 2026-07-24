@@ -479,3 +479,57 @@ SPY execution charts.
   (`BENCHMARK_VERDICT_NOT_POSSIBLE`), cost treatment is unconfirmed either
   way (`COST_TREATMENT_AMBIGUOUS`), and robustness beyond the author's own
   backtest is unconditionally `ROBUSTNESS_NOT_ESTABLISHED`.
+
+## Profitability test of the reproduced regime signal (`regime_strategy_backtest.py`)
+
+Since the author's own published numbers weren't sufficient for a
+profitability verdict (previous section), this tests the **already-
+reproduced regime signal itself** — not the author's factor portfolio — as
+a plain SPY/cash overlay: `GROWTH → hold SPY`, `FAMA_FRENCH → hold cash`.
+No new HMM run, no change to `hmm_daily_replay.py` / `execution_replay.py`
+/ `execution_intervals.py` / `execution_events.py`.
+
+No-lookahead rule: a signal known as of day `t` cannot earn `t`'s own price
+move. `data/spy_raw_d1.csv` has no Open column, so execution uses
+`Close[t+1]` (the fallback this slice's spec explicitly allows), and the
+position only starts earning return from `t+2` — a flat 2-trading-day lag
+applied uniformly, including to the 200-day SMA benchmark for a fair
+comparison. Tested separately per scenario (`daily_only` as control,
+`reset_before_rebalance`, `rebalance_before_reset`), at 4 round-trip cost
+levels (0/5/10/25 bps, split evenly across each entry/exit leg).
+
+```bash
+python regime_strategy_backtest.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --execution-dir reports --out-dir reports
+python plot_regime_profitability.py --out-dir reports
+```
+
+Outputs: `reports/regime_strategy_daily_<scenario>.csv` (daily positions/
+returns/equity per cost level), `reports/regime_profitability_summary.csv`
+(one row per scenario × cost level, plus SPY buy-and-hold/cash/SMA200
+benchmark rows), `reports/regime_profitability_report.md` (full tables,
+quadrant breakdown, and verdicts), and per-scenario equity/drawdown charts.
+
+`tests/test_regime_strategy_backtest.py` (16 tests) is a mandatory PRECHECK
+with a fully hand-worked numeric equity trace, run before any real data was
+touched. It caught two real defects: (1) the SMA benchmark's first
+implementation treated "not enough history yet" as a false/0.0 signal
+instead of undefined, because pandas evaluates `x > NaN` as `False`, not
+`NaN`; (2) the "return avoided/missed/loss" quadrant breakdown first
+*compounded* every same-sign day within a bucket — since those buckets draw
+from hundreds of non-contiguous days across 26 years, that exploded to
+nonsense (a "missed positive return while defensive" of 203,000,000%) on
+the first real-data run. Both fixed, both now have regression tests.
+
+**Headline result** (see `reports/regime_profitability_report.md` for full
+tables): profitable in isolation at every cost level in all three
+scenarios, but underperforms plain SPY buy-and-hold in total return at
+every cost level, and does not survive the harshest tested cost level
+relative to SPY buy-and-hold (`DOES_NOT_SURVIVE_COSTS` in all three).
+Whether the strategy improves on SPY's own max drawdown is
+**`CALLBACK_ORDER_SENSITIVE`** — the two real Reset-order scenarios
+disagree on that specific verdict, tracking back to the same unresolved
+QuantConnect callback-firing-order ambiguity as the rest of this project
+(`qc_probe/README.md`). Sharpe here uses a 0% risk-free rate (no local
+risk-free series, and fetching one is out of scope) — **not** comparable to
+the author's own reported 2.017.
