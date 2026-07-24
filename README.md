@@ -852,3 +852,58 @@ exits (e.g. 30 stops vs. 9 signal exits at the 2% level,
 `reset_before_rebalance`). So a tighter stop shortens each individual loss
 but, on this specific history, does not shorten *time spent underwater* —
 the opposite, if anything, compared to the no-stop case.
+
+## Reversal points — raw_decision only, no derived semantics (`reversal_points.py`)
+
+A deliberately narrow verification slice, independent of every trading
+layer above: literal `BEAR_TO_BULL`/`BULL_TO_BEAR` reversal points of the
+author's raw `bull`/`bear`/`neutral` decision series
+(`reports/daily_replay_timeline.csv`, committed in `a90002c` — long before
+any execution/portfolio/trading script existed). No `persistent_state`, no
+`BULL_CONFIRMATION`/`BEAR_CONFIRMATION`, no `ENTER_DEFENSIVE`/
+`EXIT_DEFENSIVE`, no Reset, no SPY/cash overlay, no stop-loss, no
+leverage, no drawdown, no P&L, no benchmark, no SMA, no new HMM run, no
+new state machine — only the raw decision series itself.
+
+Rule: `neutral` never creates an event and never updates the tracked
+directional state — only the last *non-neutral* value matters. A repeated
+`bull` (or `bear`), even across intervening `neutral` days, is not a new
+event. The first directional value in the whole series has nothing to
+compare against, so it isn't an event either.
+
+```bash
+python reversal_points.py --daily-replay reports/daily_replay_timeline.csv \
+    --price-csv data/spy_raw_d1.csv --out-dir reports
+python plot_reversal_points.py --out reports/reversal_points_chart.png
+```
+
+Outputs: `reports/raw_directional_decisions.csv` (`date`, `raw_decision`
+only), `reports/reversal_points.csv` (`date`, `previous_directional_state`,
+`current_directional_state`, `event`, `spy_close` — only the two allowed
+`event` values ever appear), `reports/reversal_points_chart.png` (SPY
+line, large green markers on `BEAR_TO_BULL` only, large red on
+`BULL_TO_BEAR` only, nothing else), and
+`reports/reversal_points_verification.md`.
+
+`tests/test_reversal_points.py` (13 tests) is the mandatory PRECHECK,
+reproducing the requester's own two worked examples verbatim (`bear,
+neutral, neutral, bull` → one `BEAR_TO_BULL`, not three; `bull, neutral,
+bear` → one `BULL_TO_BEAR`), plus neutral-only/repeated-direction/
+first-value-has-no-event/only-two-event-types coverage. All 13 pass. The
+verification report also manually checks 4 real fragments (2000-04,
+2008-01, 2022-01/02, and a dedicated neutral-between-two-states case) date
+by date against the literal rule.
+
+**Result:** 84 reversal points, 42 `BEAR_TO_BULL` / 42 `BULL_TO_BEAR`,
+strictly alternating (no double entries or exits). Last event:
+`BULL_TO_BEAR` on 2022-02-14 — no `bull` value appears anywhere in the
+data after that date (72 further `bear` values, 0 `bull`), so the series
+ends in an open `bear` state with no closing reversal. This independently
+cross-checks against `execution_replay.py`'s own, separately-derived
+interval logic, which found the same boundary date from a completely
+different code path (documented earlier in this README). The 84/42/42
+count happens to numerically match an earlier, explicitly-retracted
+`persistent_state` derivation — the verification report addresses this
+directly: that layer was wrong because it *relabeled* neutral days and
+built further interpretation on top; this slice does neither, and the
+matching count is a coincidence of this dataset, not reused logic.
