@@ -164,5 +164,56 @@ class GapDaysStayFlat(unittest.TestCase):
         self.assertEqual(row["entry_date"], "2000-01-20")
 
 
+class WorstDrawdownWindowAnalysis(unittest.TestCase):
+    """Confirms the requester's own observation: the worst drawdown window
+    can be dominated by a run of consecutive STOP_LOSS exits with no new
+    equity peak in between, not by a single trade's loss. Hand-worked with
+    leverage=1.0 for simple arithmetic: a winning trade sets a peak of 130,
+    then two consecutive stop-outs (at a 10%-equity stop) plus one final
+    model-signal exit erode equity to 95.34 without ever exceeding 130
+    again."""
+
+    def _build(self):
+        prices = {
+            "2000-01-05": 100.0, "2000-01-06": 130.0,   # trade 1: peak, RAW_DECISION exit
+            "2000-01-07": 125.0,                        # gap
+            "2000-01-10": 125.0, "2000-01-11": 120.0, "2000-01-12": 110.0,  # trade 2: stops at -12%
+            "2000-01-13": 108.0,                        # gap
+            "2000-01-14": 108.0, "2000-01-17": 95.0,    # trade 3: stops at -12.04%
+            "2000-01-18": 95.0, "2000-01-19": 90.0,     # trade 4: RAW_DECISION exit, no breach
+        }
+        sorted_d = sorted(prices)
+        trades = pd.DataFrame([
+            _trade("2000-01-05", 100.0, "2000-01-06"),
+            _trade("2000-01-10", 125.0, "2000-01-12"),
+            _trade("2000-01-14", 108.0, "2000-01-17"),
+            _trade("2000-01-18", 95.0, "2000-01-19"),
+        ])
+        return E.build_daily_equity_curve(trades, prices, sorted_d, leverage=1.0, stop_equity_pct=10.0)
+
+    def test_peak_and_trough_located_correctly(self):
+        daily = self._build()
+        result = E.analyze_worst_drawdown_window(daily)
+        self.assertEqual(result["peak_date"], "2000-01-06")
+        self.assertEqual(result["trough_date"], "2000-01-19")
+
+    def test_drawdown_window_is_dominated_by_consecutive_stops(self):
+        """2 STOP_LOSS exits + 1 model-signal exit between the peak and the
+        trough -- none of them individually catastrophic, but stacked
+        together with no intervening new high."""
+        daily = self._build()
+        result = E.analyze_worst_drawdown_window(daily)
+        self.assertEqual(result["stops_in_window"], 2)
+        self.assertEqual(result["signal_exits_in_window"], 2)  # trade 1's own exit + trade 4's
+
+    def test_empty_input_returns_all_none(self):
+        result = E.analyze_worst_drawdown_window(pd.DataFrame(columns=[
+            "date", "position_open", "entry_date", "entry_price", "spy_close",
+            "underlying_return_from_entry_pct", "leveraged_return_from_entry_pct",
+            "equity", "running_peak", "drawdown_pct", "exit_reason"]))
+        self.assertIsNone(result["peak_date"])
+        self.assertIsNone(result["stops_in_window"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

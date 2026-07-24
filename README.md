@@ -811,7 +811,7 @@ mark-to-market curve — `date`, `position_open`, `entry_date`,
 baseline), `reports/equity_stop_sweep_summary.csv` (full sweep, both
 scenarios), and `reports/equity_stop_sweep_report.md`.
 
-`tests/test_equity_stop_long_trades.py` (9 tests) is the mandatory
+`tests/test_equity_stop_long_trades.py` (12 tests) is the mandatory
 PRECHECK, reproducing the requester's own worked examples verbatim: SPY
 close 99.0 (leveraged -1.8%) does **not** trigger a 2% equity stop; SPY
 close 98.8 (leveraged -2.16%) **does**; equivalent SPY threshold
@@ -836,3 +836,19 @@ both dimensions** — 1% minimizes drawdown but gives the lowest return of
 any level tested; the choice depends on whether the objective is return or
 drawdown control. Same in-sample caveat as before: this describes what
 happened on this data, not a validated forward-looking optimum.
+
+**Follow-up, confirmed directly against the data:** is the worst drawdown
+actually a run of consecutive stop-outs, not one bad trade?
+`analyze_worst_drawdown_window` (3 more tests) locates the exact
+peak/trough of each drawdown and counts `STOP_LOSS` vs. model-signal exits
+in between (`reports/equity_stop_drawdown_duration.csv`). **Yes, in this
+data.** The no-stop strategy's worst drawdown is one sharp 2.5-year decline
+(the dot-com crash, 2000-03-24 → 2002-10-09, 0 stops by construction).
+Every tested stop level's worst drawdown instead lands in a much longer,
+**~9-year underwater period** spanning both the dot-com crash *and* the
+2008 crisis with no new equity high in between — and for most levels
+(1–10%), that period contains more `STOP_LOSS` exits than model-signal
+exits (e.g. 30 stops vs. 9 signal exits at the 2% level,
+`reset_before_rebalance`). So a tighter stop shortens each individual loss
+but, on this specific history, does not shorten *time spent underwater* —
+the opposite, if anything, compared to the no-stop case.

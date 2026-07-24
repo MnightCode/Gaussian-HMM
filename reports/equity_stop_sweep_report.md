@@ -49,7 +49,7 @@ as the separate underlying-price version, not modified).
 
 ## PRECHECK
 
-`tests/test_equity_stop_long_trades.py` — 9 tests, run before any real
+`tests/test_equity_stop_long_trades.py` — 12 tests, run before any real
 data, reproducing the requester's own worked examples **verbatim**:
 
 - Stop trigger: SPY close 99.0 (underlying -1.0%) → leveraged -1.8% → does
@@ -68,8 +68,13 @@ data, reproducing the requester's own worked examples **verbatim**:
   the same formula applied once per trade.
 - Gap days between trades are flat and marked `position_open=False`.
 - A stop never reschedules the next trade's entry.
+- `analyze_worst_drawdown_window` correctly locates peak/trough and counts
+  `STOP_LOSS` vs. signal exits in between, on a hand-worked 4-trade
+  sequence (2 stops + 2 signal exits between a peak of 130 and a trough of
+  95.34, with no new high in between) — see the drawdown-duration section
+  below.
 
-All 9 pass. **Real-data acceptance check (required):** the no-stop
+All 12 pass. **Real-data acceptance check (required):** the no-stop
 baseline's daily-curve final equity must match the already-confirmed
 sequential-compounding result exactly — confirmed: **708.1652** /
 **500.4701** (vs. the previously-verified 708.17 / 500.47).
@@ -105,6 +110,53 @@ sequential-compounding result exactly — confirmed: **708.1652** /
 | 15 | -8.333 | 328.00 | +228.00 | -76.63 | -74.65 | 6 |
 | 20 | -11.111 | 280.36 | +180.36 | -80.78 | -78.33 | 4 |
 | **no stop** | — | **500.47** | **+400.47** | **-78.09** | -61.33 | 0 |
+
+## Drawdown duration: depth vs. length of the worst underwater period
+
+The requester's own follow-up observation, checked directly against the
+data: **is the worst drawdown effectively a run of consecutive stop-outs
+in a row, not a single trade's loss?** Yes — `analyze_worst_drawdown_window`
+(`equity_stop_long_trades.py`, 3 tests) locates the exact peak/trough of
+`daily_max_drawdown_pct` and counts how many `STOP_LOSS` vs. model-signal
+exits happened in between. `reports/equity_stop_drawdown_duration.csv` —
+full table, both scenarios, every level.
+
+**reset_before_rebalance:**
+
+| stop | peak | trough | years underwater | stops in window | signal exits in window |
+|---|---|---|---|---|---|
+| no stop | 2000-03-24 | 2002-10-09 | **2.54** | 0 | 12 |
+| 1% | 2000-03-24 | 2009-03-05 | 8.95 | 32 | 7 |
+| 2% | 2000-03-24 | 2009-03-05 | 8.95 | 30 | 9 |
+| 3% | 2000-03-24 | 2009-03-05 | 8.95 | 28 | 11 |
+| 5% | 2000-03-24 | 2009-03-05 | 8.95 | 20 | 18 |
+| 7% | 2000-03-24 | 2009-03-05 | 8.95 | 14 | 24 |
+| 10% | 2000-03-24 | 2009-03-05 | 8.95 | 8 | 30 |
+| 15% | 2000-03-24 | 2009-03-05 | 8.95 | 5 | 33 |
+| 20% | 2000-03-24 | 2009-02-23 | 8.92 | 4 | 33 |
+
+`rebalance_before_reset` is nearly identical (same table in
+`equity_stop_drawdown_duration.csv`), with two level-specific exceptions:
+the 1% stop's worst window falls in an entirely different, more recent
+period (2021-05-07 → 2025-04-03, 3.91 years, 18 stops) rather than
+2000-2009, and the 5% stop's window stretches even longer (11.45 years,
+to 2011-09-06).
+
+**The real trade-off, stated precisely:** the no-stop strategy's worst
+drawdown is a single, sharp 2.5-year decline (the dot-com crash,
+2000-03-24 → 2002-10-09) with zero stop-outs by construction. Every
+tested stop level, in both scenarios, has its worst drawdown land in a
+**much longer, ~9-year underwater period** spanning both the dot-com
+crash *and* the 2008 crisis without the account ever setting a new high
+in between — and for most levels (1-10%), that period contains **more
+STOP_LOSS exits than model-signal exits**. So the requester's intuition is
+confirmed: the equity-stop drawdown figures above are not driven by any
+single catastrophic trade — they are the compounded effect of a long run
+of repeated stop-outs during a period where the market kept making new
+lows faster than the strategy could re-enter and recover. A tighter stop
+shortens each individual loss but, in this specific history, does not
+shorten the *time* spent underwater — if anything the underwater period is
+dramatically longer than the no-stop case's.
 
 ## Literal answer (corrected)
 

@@ -129,6 +129,34 @@ def build_daily_equity_curve(trades_df, price_by_date, sorted_dates, leverage=LE
                                        "running_peak", "drawdown_pct", "exit_reason"])
 
 
+def analyze_worst_drawdown_window(daily_df):
+    """Locate the peak-to-trough window that produces daily_max_drawdown_pct,
+    and characterize what happened inside it: how long the account stayed
+    underwater, and how many of the closes in that window were STOP_LOSS
+    vs. the model's own signal. Returns a dict with peak_date, trough_date,
+    years_underwater, stops_in_window, signal_exits_in_window. Returns all
+    None if daily_df is empty."""
+    if len(daily_df) == 0:
+        return {"peak_date": None, "trough_date": None, "years_underwater": None,
+               "stops_in_window": None, "signal_exits_in_window": None}
+    worst_idx = daily_df["drawdown_pct"].idxmin()
+    peak_val = daily_df.loc[worst_idx, "running_peak"]
+    peak_idx = daily_df[daily_df["equity"] >= peak_val - 1e-9].index[0]
+    peak_date = daily_df.loc[peak_idx, "date"]
+    trough_date = daily_df.loc[worst_idx, "date"]
+    years_underwater = (pd.Timestamp(trough_date) - pd.Timestamp(peak_date)).days / 365.25
+
+    between = daily_df.loc[peak_idx:worst_idx]
+    stops_in_window = int((between["exit_reason"] == "STOP_LOSS").sum())
+    signal_exits_in_window = int(((between["exit_reason"] != "") & between["exit_reason"].notna()
+                                  & (between["exit_reason"] != "STOP_LOSS")).sum())
+    return {
+        "peak_date": peak_date, "trough_date": trough_date,
+        "years_underwater": round(years_underwater, 2),
+        "stops_in_window": stops_in_window, "signal_exits_in_window": signal_exits_in_window,
+    }
+
+
 def summarize(daily_df, initial_capital=INITIAL_CAPITAL, leverage=LEVERAGE, stop_equity_pct=None):
     n = len(daily_df)
     final_equity = daily_df["equity"].iloc[-1] if n else initial_capital
