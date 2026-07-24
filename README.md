@@ -636,3 +636,41 @@ were similar in size). Best trade in both: 2012-01-03 → 2014-02-04
 literal P&L of holding SPY between these already-fixed signal dates only —
 not a claim about the author's actual `GrowthModel` portfolio, which is a
 leveraged, factor-based long-only book, not a plain SPY holding.
+
+## Short SPY trades from the regime signal (`short_phase_trades.py`)
+
+Same request, other direction: short SPY on `ENTER_DEFENSIVE`, cover on the
+next `EXIT_DEFENSIVE`. Same column schema as `growth_phase_trades.py`
+(`entry_price`/`exit_price`/`trade_result_pct`/`win_or_loss`), but reuses
+`defensive_phase_accuracy.pair_defensive_phases` directly (unmodified) for
+pairing, since it's the identical `ENTER_DEFENSIVE → next EXIT_DEFENSIVE`
+sequence.
+
+```bash
+python short_phase_trades.py --price-csv data/spy_raw_d1.csv --price-field Close \
+    --events reports/execution_events_reset_before_rebalance.csv \
+    --scenario reset_before_rebalance --out-dir reports
+# repeat with rebalance_before_reset
+```
+
+Outputs: `reports/short_phase_trades_<scenario>.csv`,
+`reports/short_phase_plus_minus_summary.csv`,
+`reports/short_phase_trades_report.md`.
+`tests/test_short_phase_trades.py` (8 tests) is the mandatory PRECHECK,
+including a direct cross-check against `defensive_phase_accuracy.py`'s
+output on identical input.
+
+**Note on the numbers:** short P&L = `(entry_price - exit_price) /
+entry_price * 100` is the same arithmetic as
+`defensive_phase_accuracy.py`'s `-spy_move_pct` — shorting SPY during a
+defensive phase and "the move avoided by not holding SPY" are
+mathematically identical. So the results below are **numerically the same**
+as the "Directional phase accuracy" section above, now presented as a
+literal short-trade P&L table: `reset_before_rebalance` — 88 completed
+trades, 38 wins / 50 losses (43.2% win rate), arithmetic sum **-38.4%**.
+`rebalance_before_reset` — 97 completed trades, 41 wins / 56 losses (42.3%
+win rate), arithmetic sum **-59.9%**. Exact inverse of the long-side result
+above (+149.9% / +132.3%), as expected since growth and defensive phases
+alternate and roughly cover the whole timeline together. Not a claim about
+the author's actual defensive holding (market-neutral Fama–French
+long/short, not a short SPY position).
