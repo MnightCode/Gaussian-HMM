@@ -742,12 +742,18 @@ the no-stop baseline saved per-trade), `reports/stop_loss_sweep_summary.csv`
 `leveraged_compounding.py` at 1.8x for a like-for-like comparison), and
 `reports/stop_loss_analysis_report.md`.
 
-`tests/test_stop_loss_long_trades.py` (8 tests) is the mandatory PRECHECK:
+`tests/test_stop_loss_long_trades.py` (10 tests) is the mandatory PRECHECK:
 a hand-worked trace where one trade breaches a 2% stop and closes at its
 actual -3.0% close (not clipped to -2.0%), one trade is unaffected, an
-exact-boundary check (`<=` triggers), and a 999%-stop no-op check —
-verified on real data too (both scenarios match `growth_phase_trades.py`'s
-own output exactly at that setting).
+exact-boundary check (`<=` triggers), a 999%-stop no-op check, and two
+tests confirming that after a stop, the strategy waits for the model's own
+next `EXIT_DEFENSIVE` ("green") signal rather than re-entering immediately
+— a stopped trade's neighbor keeps a byte-identical entry/exit date, and no
+synthetic gap-filling trade is inserted. Verified on real data too: at a
+2% stop, a trade stopped 2000-05-10 doesn't get a new position until
+2000-06-01 (the model's actual next green signal) — 22 days flat in
+between, and the next trade's entry date is identical whether or not the
+stop fired.
 
 **Literal answer:** yes, a sweep can be run — and on this data, **no
 tested stop level beats having no stop at all**. `no_stop` has the highest

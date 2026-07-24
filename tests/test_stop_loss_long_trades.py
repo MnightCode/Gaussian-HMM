@@ -130,5 +130,32 @@ class StopLossPrecheck(unittest.TestCase):
         self.assertEqual(result.iloc[0]["exit_date"], "2000-01-06")
 
 
+class WaitForNextGreenAfterStop(unittest.TestCase):
+    """Required behavior: being stopped out of trade N must NOT reschedule
+    trade N+1 -- the strategy sits flat from the stop day until the
+    model's own next EXIT_DEFENSIVE ('green') signal, exactly as if no
+    stop had fired. apply_stop_loss operates on each row independently and
+    never touches a different row's entry_date/exit_date, but this is
+    asserted explicitly here as its own guarantee, not left implicit."""
+
+    def test_next_trade_entry_date_unchanged_by_earlier_stop(self):
+        result = SL.apply_stop_loss(TRADES_DF, stop_pct=2.0, price_by_date=PRICE_BY_DATE,
+                                    sorted_dates=SORTED_DATES)
+        self.assertTrue(bool(result.iloc[0]["stopped_out"]))  # trade 0 WAS stopped
+        # trade 1's entry/exit must be byte-identical to the original,
+        # untouched by trade 0's early exit.
+        self.assertEqual(result.iloc[1]["entry_date"], TRADES_DF.iloc[1]["entry_date"])
+        self.assertEqual(result.iloc[1]["exit_date"], TRADES_DF.iloc[1]["exit_date"])
+        self.assertFalse(bool(result.iloc[1]["stopped_out"]))
+
+    def test_no_synthetic_trade_is_inserted_to_fill_the_gap(self):
+        """The gap between a stop-out day and the next trade's entry (here,
+        2000-01-07 -> 2000-01-15) must simply not exist as a trade -- row
+        count must stay exactly as many rows as input trades, no more."""
+        result = SL.apply_stop_loss(TRADES_DF, stop_pct=2.0, price_by_date=PRICE_BY_DATE,
+                                    sorted_dates=SORTED_DATES)
+        self.assertEqual(len(result), len(TRADES_DF))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

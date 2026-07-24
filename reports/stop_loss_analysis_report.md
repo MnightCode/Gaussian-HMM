@@ -24,9 +24,37 @@ already-committed, unmodified `leveraged_compounding.py` (1.8x leverage,
 sequential compounding, initial capital 100) for a like-for-like comparison
 against `reports/leveraged_long_compounding_report.md`'s no-stop baseline.
 
+## Confirmed: after a stop, the strategy waits for the next green signal — it does not re-enter immediately
+
+This was checked explicitly, not just assumed. `apply_stop_loss` only ever
+modifies the ONE row (trade) it stopped — it never touches any other
+trade's `entry_date`/`exit_date`. Since each trade's entry is already the
+model's own `EXIT_DEFENSIVE` ("green") signal from `growth_phase_trades.py`,
+an earlier stop-out simply leaves a gap with no position at all until that
+next green signal fires — there is no code path that could make it
+re-enter sooner. `tests/test_stop_loss_long_trades.py`'s
+`WaitForNextGreenAfterStop` class asserts this directly: a stopped trade's
+neighbor keeps byte-identical `entry_date`/`exit_date`, and the row count
+never grows (no synthetic "gap-filling" trade is inserted).
+
+Verified on real data too — a concrete example from `reset_before_rebalance`
+at a 2% stop:
+
+| | entry | exit | result |
+|---|---|---|---|
+| Trade (stopped) | 2000-04-19 | **2000-05-10** (stop-loss, actual close-to-entry: -3.49%) | LOSS |
+| Next trade | **2000-06-01** | 2000-06-09 | — |
+
+The strategy sat in cash for the **22 days** between 2000-05-10 and
+2000-06-01 — it did not re-buy on any interim uptick, only on the model's
+actual next green signal. For comparison, the *original* (unstopped) trade
+would have exited 2000-05-11 anyway (one day later, at -1.29% instead of
+-3.49%) — the stop only changed *this* trade's own exit, and the next
+trade's 2000-06-01 entry is identical whether or not the stop fired.
+
 ## PRECHECK
 
-`tests/test_stop_loss_long_trades.py` — 8 tests, run before any real data:
+`tests/test_stop_loss_long_trades.py` — 10 tests, run before any real data:
 a hand-worked two-trade trace (one trade breaches a 2% stop and closes
 early at its actual -3.0% close, not clipped to -2.0%; one trade never
 breaches and is unaffected), an exact-boundary test (`<=`, not `<`,
@@ -34,7 +62,9 @@ triggers), confirmation that an intermediate non-breaching day does not
 falsely trigger, that the entry day itself cannot trigger (0% return there
 by construction), and that an unreachably loose stop (999%) is an exact
 no-op — verified on real data too (both scenarios byte-for-byte match
-`growth_phase_trades.py`'s own output at that setting). All 8 pass.
+`growth_phase_trades.py`'s own output at that setting). Plus two dedicated
+tests confirming a stopped trade never reschedules the next one (see
+section above). All 10 pass.
 
 ## Sweep results (stop levels 1/2/3/5/7/10/15/20%, plus no-stop baseline)
 
