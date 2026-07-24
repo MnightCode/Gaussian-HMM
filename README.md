@@ -448,3 +448,34 @@ specific column. Raw TradingView `Close` is **not** the reference series.
 
 > ⚠️ In some locked-down/CI environments outbound access to Yahoo Finance is
 > blocked; use `--csv` (with an adjusted-close column) there.
+
+## Author profitability verdict (`reports/author_profitability_*`)
+
+A separate, one-shot analysis answering "was the author's own published
+backtest profitable?" using **only** the author's article, tables, code, and
+already-saved repo materials — no new HMM run, no new portfolio backtest, no
+local GrowthModel/FamaFrench reproduction, no reading profitability off the
+SPY execution charts.
+
+- `reports/author_profitability_evidence.csv` / `.md` — every performance
+  number found (backtest dates, initial cash, Sharpe/IR/Treynor/Max
+  Drawdown from the article's Table 4, etc.), each classified
+  `AUTHOR_REPORTED_EXACT` / `AUTHOR_REPORTED_GRAPH_ONLY` /
+  `DERIVED_FROM_AUTHOR_EXACT_VALUES` / `NOT_REPORTED` / `AMBIGUOUS`, with an
+  exact source file/line or document citation for every non-empty value.
+  Also documents that re-fetching the live article this session was blocked
+  (`mdpi.com` and every mirror URL found via search returned HTTP 403, as
+  did an unrelated control site — general external web access is blocked in
+  this environment, same as the QuantConnect blocker in `qc_probe/README.md`).
+- `reports/author_profitability_verdict.md` — five independent verdicts
+  (profitability, benchmark comparison, risk-adjusted result, cost
+  treatment, robustness), each resting only on its own designated evidence
+  and never merged with another. Headline result: `final_equity` and
+  `total_return_pct` are not confirmed exact
+  (`AUTHOR_DATA_INSUFFICIENT_FOR_PROFITABILITY_VERDICT`), while the
+  author's reported Sharpe/IR/Treynor ratios are positive
+  (`POSITIVE_RISK_ADJUSTED_RESULT_REPORTED`) — these are deliberately not
+  the same claim. No benchmark return figure was found
+  (`BENCHMARK_VERDICT_NOT_POSSIBLE`), cost treatment is unconfirmed either
+  way (`COST_TREATMENT_AMBIGUOUS`), and robustness beyond the author's own
+  backtest is unconditionally `ROBUSTNESS_NOT_ESTABLISHED`.
