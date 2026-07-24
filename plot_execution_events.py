@@ -159,7 +159,7 @@ def main(argv=None):
     _draw(ax, price, intervals, events, zoom_xlim, title)
     fig.autofmt_xdate()
     fig.tight_layout()
-    fig.savefig(args.out, dpi=140)
+    fig.savefig(args.out, dpi=560)
     print(f"wrote {args.out}")
     return 0
 
