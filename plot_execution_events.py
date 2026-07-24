@@ -87,8 +87,8 @@ def _draw(ax_price, price, intervals, events, xlim, title):
         sub = enter[enter["trigger"] == trig]
         if len(sub):
             shape_label = "raw-decision-induced transition" if trig == "RAW_DECISION" else "reset-induced transition"
-            lw = 0.6 if trig == "RAW_DECISION" else 2.4
-            size = 180 if trig == "RAW_DECISION" else 280
+            lw = 1.2 if trig == "RAW_DECISION" else 4.5
+            size = 450 if trig == "RAW_DECISION" else 650
             ax_price.scatter(sub["decision_date"], px(sub), marker=marker, color="#d62728",
                              s=size, zorder=6, edgecolors="black", linewidths=lw,
                              label=f"entry defensive ({shape_label}, n={len(sub)})")
@@ -97,31 +97,32 @@ def _draw(ax_price, price, intervals, events, xlim, title):
         sub = exitd[exitd["trigger"] == trig]
         if len(sub):
             shape_label = "raw-decision-induced transition" if trig == "RAW_DECISION" else "reset-induced transition"
-            lw = 0.6 if trig == "RAW_DECISION" else 2.4
-            size = 180 if trig == "RAW_DECISION" else 280
+            lw = 1.2 if trig == "RAW_DECISION" else 4.5
+            size = 450 if trig == "RAW_DECISION" else 650
             ax_price.scatter(sub["decision_date"], px(sub), marker=marker, color="#2ca02c",
                              s=size, zorder=6, edgecolors="black", linewidths=lw,
                              label=f"exit defensive ({shape_label}, n={len(sub)})")
 
     if len(bull_conf):
         ax_price.scatter(bull_conf["decision_date"], px(bull_conf), marker="o", color="#2ca02c",
-                         s=10, alpha=0.5, zorder=4, label=f"confirmation: bull (n={len(bull_conf)})")
+                         s=28, alpha=0.5, zorder=4, label=f"confirmation: bull (n={len(bull_conf)})")
     if len(bear_conf):
         ax_price.scatter(bear_conf["decision_date"], px(bear_conf), marker="o", color="#d62728",
-                         s=10, alpha=0.5, zorder=4, label=f"confirmation: bear (n={len(bear_conf)})")
+                         s=28, alpha=0.5, zorder=4, label=f"confirmation: bear (n={len(bear_conf)})")
 
     if len(initial):
         ax_price.scatter(initial["decision_date"], px(initial), marker="*", color="#1f77b4",
-                         s=220, zorder=7, edgecolors="black", linewidths=0.6,
+                         s=550, zorder=7, edgecolors="black", linewidths=1.2,
                          label=f"initialization (n={len(initial)})")
 
-    ax_price.set_ylabel("SPY close")
-    ax_price.set_title(title)
-    ax_price.legend(loc="upper left", fontsize=7, ncol=2)
+    ax_price.set_ylabel("SPY close", fontsize=18)
+    ax_price.set_title(title, fontsize=20)
+    ax_price.legend(loc="upper left", fontsize=15, ncol=2, markerscale=1.6)
     ax_price.grid(alpha=0.15)
     ax_price.set_xlim(*xlim)
     ax_price.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax_price.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax_price.tick_params(axis="both", labelsize=16)
 
 
 def main(argv=None):
@@ -154,12 +155,12 @@ def main(argv=None):
             f"SPY + portfolio_model context zones + classified events "
             f"(raw close, TEMPORARY dataset)  [{args.zoom_start} -> end]")
 
-    fig, ax = plt.subplots(figsize=(18, 8))
+    fig, ax = plt.subplots(figsize=(32, 13))
     zoom_xlim = (pd.Timestamp(args.zoom_start), price.index.max())
     _draw(ax, price, intervals, events, zoom_xlim, title)
     fig.autofmt_xdate()
     fig.tight_layout()
-    fig.savefig(args.out, dpi=400)
+    fig.savefig(args.out, dpi=200)
     print(f"wrote {args.out}")
     return 0
 
