@@ -1,0 +1,12 @@
+date,previous_directional_state,current_directional_state,event,spy_close
+2018-02-06,bull,bear,BULL_TO_BEAR,269.13
+2018-05-23,bear,bull,BEAR_TO_BULL,273.36
+2018-10-11,bull,bear,BULL_TO_BEAR,272.17
+2019-03-05,bear,bull,BEAR_TO_BULL,279.02
+2019-05-14,bull,bear,BULL_TO_BEAR,283.4
+2019-07-19,bear,bull,BEAR_TO_BULL,297.17
+2019-08-06,bull,bear,BULL_TO_BEAR,287.8
+2019-09-20,bear,bull,BEAR_TO_BULL,298.28
+2019-10-03,bull,bear,BULL_TO_BEAR,290.42
+2019-12-11,bear,bull,BEAR_TO_BULL,314.42
+2020-02-03,bull,bear,BULL_TO_BEAR,324.12
