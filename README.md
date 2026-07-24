@@ -674,3 +674,45 @@ above (+149.9% / +132.3%), as expected since growth and defensive phases
 alternate and roughly cover the whole timeline together. Not a claim about
 the author's actual defensive holding (market-neutral Fama–French
 long/short, not a short SPY position).
+
+## Leveraged compounded result of the long trades (`leveraged_compounding.py`) — corrects an earlier error
+
+**A prior answer was wrong**: it implied the long-trade arithmetic sum
+above (+149.9% / +132.3%) reflected full reinvestment. It doesn't —
+percentages don't add across trades when the whole account compounds
+through each one sequentially at leverage. Corrected here: for each
+already-computed long trade (`growth_phase_trades_<scenario>.csv`,
+chronological order, not recomputed), `Equity_{n+1} = Equity_n * (1 + 1.8 *
+trade_result_pct_n / 100)` — 1.8x is the author's own `GrowthModel`
+leverage. No new HMM run, no change to `growth_phase_trades.py` or any
+other script.
+
+```bash
+python leveraged_compounding.py --trades reports/growth_phase_trades_reset_before_rebalance.csv \
+    --scenario reset_before_rebalance --leverage 1.8 --initial-capital 100 --out-dir reports
+# repeat with rebalance_before_reset
+```
+
+Outputs: `reports/leveraged_long_equity_<scenario>.csv` (per-trade equity
+before/after, leveraged return, wipeout flag),
+`reports/leveraged_long_compounding_summary.csv`,
+`reports/leveraged_long_compounding_report.md`.
+
+`tests/test_leveraged_compounding.py` (13 tests) is the mandatory
+PRECHECK, reproducing the requester's own worked example verbatim
+(100 → +10%/+18% leveraged → 118 → -5%/-9% leveraged → **107.38**,
+compounded return **+7.38%**, explicitly asserted not equal to the naive
++9%). **One real bug caught during this precheck**: an empty trade list
+built a `pd.DataFrame` with no columns at all (pandas can't infer them
+from zero rows), crashing the summary step — fixed by declaring columns
+explicitly.
+
+**Result** (leverage 1.8x, initial capital 100): `reset_before_rebalance`
+— 88 trades, final capital **708.17** (compounded **+608.2%**), max
+drawdown between trades **-65.6%**, no trade came close to a wipeout
+(worst leveraged single-trade return: -18.6%). `rebalance_before_reset` —
+97 trades, final capital **500.47** (compounded **+400.5%**), max drawdown
+**-61.3%**. Both cross-checked independently via a plain `numpy.prod`
+outside the module's own functions. Still the same scope as
+`growth_phase_trades.py`: a hypothetical leveraged SPY long, not the
+author's actual 50-stock `GrowthModel` portfolio.
