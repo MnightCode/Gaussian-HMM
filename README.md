@@ -716,3 +716,50 @@ drawdown between trades **-65.6%**, no trade came close to a wipeout
 outside the module's own functions. Still the same scope as
 `growth_phase_trades.py`: a hypothetical leveraged SPY long, not the
 author's actual 50-stock `GrowthModel` portfolio.
+
+## Stop-loss overlay and level sweep (`stop_loss_long_trades.py`)
+
+Answers "what if a 2% stop-loss were applied, and is there an optimal
+level?" For each already-computed long trade
+(`growth_phase_trades_<scenario>.csv`, not recomputed), walks the SPY daily
+`Close` path from the day after entry through the trade's own original
+exit date; the first day the running return drops to `<= -stop_pct` closes
+the trade early at that day's actual close (not clipped to the nominal
+threshold — daily-close granularity only, no intraday data available). A
+stop never reschedules any other trade. No change to any other script,
+including `growth_phase_trades.py` and `leveraged_compounding.py` (reused
+unmodified for the leveraged comparison).
+
+```bash
+python stop_loss_long_trades.py --trades reports/growth_phase_trades_reset_before_rebalance.csv \
+    --price-csv data/spy_raw_d1.csv --stop-pct 2.0 \
+    --scenario reset_before_rebalance --out-dir reports
+```
+
+Outputs: `reports/stop_loss_<level>pct_trades_<scenario>.csv` (2%, 7%, and
+the no-stop baseline saved per-trade), `reports/stop_loss_sweep_summary.csv`
+(full sweep: 1/2/3/5/7/10/15/20% + no-stop, both scenarios, run through
+`leveraged_compounding.py` at 1.8x for a like-for-like comparison), and
+`reports/stop_loss_analysis_report.md`.
+
+`tests/test_stop_loss_long_trades.py` (8 tests) is the mandatory PRECHECK:
+a hand-worked trace where one trade breaches a 2% stop and closes at its
+actual -3.0% close (not clipped to -2.0%), one trade is unaffected, an
+exact-boundary check (`<=` triggers), and a 999%-stop no-op check —
+verified on real data too (both scenarios match `growth_phase_trades.py`'s
+own output exactly at that setting).
+
+**Literal answer:** yes, a sweep can be run — and on this data, **no
+tested stop level beats having no stop at all**. `no_stop` has the highest
+leveraged compounded return in both scenarios (+608.2% / +400.5%). Among
+the actual stop levels, **7% did best in both** (+400.1% / +253.4%), still
+well below no-stop; a 2% stop specifically underperforms clearly (+229.6%
+/ +154.1%). Max drawdown-between-trades is mostly **worse**, not better,
+at tighter stops — a real effect of the leveraged-compounding metric, not
+an error: stops that repeatedly cut trades short before their eventual
+recovery suppress the equity curve's running peak, so later losing
+streaks become a *larger* percentage drop relative to that lower peak.
+**This is an in-sample sweep over the same historical data used
+throughout this project** — "7% did best here" describes this one dataset,
+not a validated, forward-looking optimal level; no out-of-sample check was
+performed.
