@@ -45,17 +45,23 @@ SCENARIO_ANNOTATION = {
 # Marker spec per (event_type, trigger). event_type controls size/direction/
 # color (ENTER_DEFENSIVE always points down, EXIT_DEFENSIVE always points up
 # regardless of trigger); trigger controls the SHAPE FAMILY so a viewer can
-# never confuse the two causes at a glance while still reading direction
-# correctly for both: raw-decision-induced uses a SOLID filled triangle
-# ('v'/'^'); Reset-induced uses a tripod/star glyph ('1'=tri_down,
-# '2'=tri_up) -- silhouette is unmistakably different from a solid triangle
-# (checked by cropping and visually inspecting the rendered legend, since an
-# earlier caret-marker choice ('6'/'7') rendered visually indistinguishable
-# from the solid triangles at this marker size and was rejected), while the
-# tripod's own orientation still points down/up like its raw-decision
-# counterpart.
-ENTER_MARKER = {"RAW_DECISION": "v", "MONTHLY_RESET": "1"}
-EXIT_MARKER = {"RAW_DECISION": "^", "MONTHLY_RESET": "2"}
+# never confuse the causes at a glance while still reading direction
+# correctly where direction IS known: raw-decision-induced uses a SOLID
+# filled triangle ('v'/'^'); Reset-induced (single-action, unambiguous) uses
+# a tripod/star glyph ('1'=tri_down, '2'=tri_up) -- silhouette is
+# unmistakably different from a solid triangle (checked by cropping and
+# visually inspecting the rendered legend, since an earlier caret-marker
+# choice ('6'/'7') rendered visually indistinguishable from the solid
+# triangles at this marker size and was rejected).
+#
+# DUAL_ACTION_ORDER_DEPENDENT (both daily_action AND reset_action non-'NONE'
+# the same day) deliberately uses a non-directional diamond for BOTH enter
+# and exit: execution_replay.py's output has no intermediate-state trace
+# between the two callback calls, so which one actually produced
+# portfolio_after is genuinely undetermined -- these points must not look
+# like a confidently-attributed up/down transition.
+ENTER_MARKER = {"RAW_DECISION": "v", "MONTHLY_RESET": "1", "DUAL_ACTION_ORDER_DEPENDENT": "D"}
+EXIT_MARKER = {"RAW_DECISION": "^", "MONTHLY_RESET": "2", "DUAL_ACTION_ORDER_DEPENDENT": "D"}
 
 
 def _draw(ax_price, price, intervals, events, xlim, title):
@@ -83,25 +89,27 @@ def _draw(ax_price, price, intervals, events, xlim, title):
     bear_conf = ev[ev["event_type"] == "BEAR_CONFIRMATION"]
     initial = ev[ev["event_type"].isin(["INITIAL_ENTER_GROWTH", "INITIAL_ENTER_DEFENSIVE"])]
 
+    SHAPE_LABEL = {
+        "RAW_DECISION": "raw-decision-induced transition",
+        "MONTHLY_RESET": "reset-induced transition",
+        "DUAL_ACTION_ORDER_DEPENDENT": "order-dependent, cause undetermined",
+    }
+    LW = {"RAW_DECISION": 1.2, "MONTHLY_RESET": 4.5, "DUAL_ACTION_ORDER_DEPENDENT": 2.0}
+    SIZE = {"RAW_DECISION": 450, "MONTHLY_RESET": 650, "DUAL_ACTION_ORDER_DEPENDENT": 550}
+
     for trig, marker in ENTER_MARKER.items():
         sub = enter[enter["trigger"] == trig]
         if len(sub):
-            shape_label = "raw-decision-induced transition" if trig == "RAW_DECISION" else "reset-induced transition"
-            lw = 1.2 if trig == "RAW_DECISION" else 4.5
-            size = 450 if trig == "RAW_DECISION" else 650
             ax_price.scatter(sub["decision_date"], px(sub), marker=marker, color="#d62728",
-                             s=size, zorder=6, edgecolors="black", linewidths=lw,
-                             label=f"entry defensive ({shape_label}, n={len(sub)})")
+                             s=SIZE[trig], zorder=6, edgecolors="black", linewidths=LW[trig],
+                             label=f"entry defensive ({SHAPE_LABEL[trig]}, n={len(sub)})")
 
     for trig, marker in EXIT_MARKER.items():
         sub = exitd[exitd["trigger"] == trig]
         if len(sub):
-            shape_label = "raw-decision-induced transition" if trig == "RAW_DECISION" else "reset-induced transition"
-            lw = 1.2 if trig == "RAW_DECISION" else 4.5
-            size = 450 if trig == "RAW_DECISION" else 650
             ax_price.scatter(sub["decision_date"], px(sub), marker=marker, color="#2ca02c",
-                             s=size, zorder=6, edgecolors="black", linewidths=lw,
-                             label=f"exit defensive ({shape_label}, n={len(sub)})")
+                             s=SIZE[trig], zorder=6, edgecolors="black", linewidths=LW[trig],
+                             label=f"exit defensive ({SHAPE_LABEL[trig]}, n={len(sub)})")
 
     if len(bull_conf):
         ax_price.scatter(bull_conf["decision_date"], px(bull_conf), marker="o", color="#2ca02c",

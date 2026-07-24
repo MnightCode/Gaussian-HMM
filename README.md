@@ -306,13 +306,28 @@ one of eight mutually-exclusive `event_type`s, in this priority order:
 | `NO_EVENT` | everything else (no-op day) |
 
 Each row also gets a `trigger` (`INITIALIZATION` / `RAW_DECISION` /
-`MONTHLY_RESET` / `NONE`), derived — never guessed — from the `daily_action`/
-`reset_action` columns already produced by `execution_replay.py`:
-`RAW_DECISION` if `daily_action != 'NONE'` (checked first), else
-`MONTHLY_RESET` if `reset_action != 'NONE'`, else `NONE` for
-confirmations/no-ops. If both callbacks act the same day, `trigger` resolves
-to `RAW_DECISION`, but `daily_action` and `reset_action` are **both** always
-kept as separate output columns — the dual impact is never hidden.
+`MONTHLY_RESET` / `DUAL_ACTION_ORDER_DEPENDENT` / `NONE`), derived — never
+guessed — from the `daily_action`/`reset_action` columns already produced by
+`execution_replay.py`: if **both** `daily_action != 'NONE'` and
+`reset_action != 'NONE'` the same day, `trigger` is
+`DUAL_ACTION_ORDER_DEPENDENT` (checked first); else `RAW_DECISION` if only
+`daily_action != 'NONE'`; else `MONTHLY_RESET` if only
+`reset_action != 'NONE'`; else `NONE` for confirmations/no-ops.
+`daily_action` and `reset_action` are **both** always kept as separate
+output columns regardless of `trigger` — the dual impact is never hidden.
+
+An earlier version of this classifier resolved dual-action days to
+`RAW_DECISION` simply because `daily_action` happened to be checked first in
+the if/elif chain — that was a classifier-priority artifact asserted as if
+it were a causal finding, not something derived from evidence.
+`execution_replay.py`'s output records *whether* each callback acted, but
+not the intermediate portfolio state between the two calls within a day, so
+which callback actually produced that day's `portfolio_after` is genuinely
+undetermined from this data. `DUAL_ACTION_ORDER_DEPENDENT` says so honestly
+instead of guessing. On the real data this affects a small but nonzero
+slice: 6 transitions per Reset-order scenario (5 `ENTER_DEFENSIVE`, 1
+`EXIT_DEFENSIVE`) are dual-action and are now labeled
+`DUAL_ACTION_ORDER_DEPENDENT` rather than `RAW_DECISION`.
 
 ```bash
 for scenario in daily_only reset_before_rebalance rebalance_before_reset; do
@@ -326,13 +341,13 @@ GROWTH/FAMA_FRENCH background zones as before (labeled explicitly as
 **"portfolio_model context"**, never as a market "trend"), and event markers
 whose shape encodes both direction and cause: `ENTER_DEFENSIVE` is a large
 downward marker, `EXIT_DEFENSIVE` a large upward marker;
-`BULL_CONFIRMATION`/`BEAR_CONFIRMATION` are small dots; and a
-**raw-decision-induced** transition (solid filled triangle) is always a
-visually distinct shape from a **Reset-induced** one (thin tripod glyph) —
-never a diamond-for-both, which was tried first and rejected after visually
-inspecting the rendered legend and finding the direction distinction lost.
-Neutral/no-event days draw **nothing** on the price panel, so they cannot be
-mistaken for a reversal.
+`BULL_CONFIRMATION`/`BEAR_CONFIRMATION` are small dots; a
+**raw-decision-induced** transition (solid filled triangle) is a visually
+distinct shape from a **Reset-induced** one (thin tripod glyph); and a
+**`DUAL_ACTION_ORDER_DEPENDENT`** transition is a third shape (diamond,
+deliberately non-directional) so it never reads as a confidently-attributed
+up/down move. Neutral/no-event days draw **nothing** on the price panel, so
+they cannot be mistaken for a reversal.
 
 ```bash
 python plot_execution_events.py --price-csv data/spy_raw_d1.csv --price-field Close \
@@ -344,13 +359,22 @@ python plot_execution_events.py --price-csv data/spy_raw_d1.csv --price-field Cl
 ```
 
 **Literal finding from the two canonical 2022+ event charts** (not a market
-conclusion — just what the classified data shows): in both callback-order
-scenarios, **100% of `MONTHLY_RESET`-triggered transitions are
-`EXIT_DEFENSIVE`** — `Reset()` alone never independently causes an entry into
-the defensive phase in this replay; every observed `ENTER_DEFENSIVE` is
-`RAW_DECISION`-triggered. `EXIT_DEFENSIVE` is triggered by `MONTHLY_RESET`
-more often than by `RAW_DECISION` in both scenarios (68 vs 21 for
-`reset_before_rebalance`; 80 vs 18 for `rebalance_before_reset`).
+conclusion — just what the classified data shows, scoped to what it actually
+covers): among **Reset-only** transitions (single-action days where
+`reset_action != 'NONE'` and `daily_action == 'NONE'`), in both
+callback-order scenarios **100% are `EXIT_DEFENSIVE`** — 0 `ENTER_DEFENSIVE`
+via `MONTHLY_RESET` in either scenario. `EXIT_DEFENSIVE` is triggered by
+`MONTHLY_RESET` more often than by `RAW_DECISION` in both scenarios (68 vs
+20 for `reset_before_rebalance`; 80 vs 17 for `rebalance_before_reset`).
+
+This does **not** establish the stronger claim "`Reset()` never
+independently causes an entry into the defensive phase": 6 transitions per
+scenario (5 `ENTER_DEFENSIVE`, 1 `EXIT_DEFENSIVE`) occur on dual-action
+days, where `Reset()` and `rebalance()` both acted the same day and which
+one actually produced that day's `portfolio_after` is undetermined from
+this data (see `DUAL_ACTION_ORDER_DEPENDENT` above). Those 5
+`ENTER_DEFENSIVE` dual-action days mean a Reset-caused entry into the
+defensive phase is not ruled out by this data — only unresolved.
 
 ## Callback-order probe (`qc_probe/`) — STATUS: PENDING
 

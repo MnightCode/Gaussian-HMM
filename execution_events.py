@@ -22,20 +22,27 @@ Canonical event_type (mutually exclusive, exhaustive; checked in this order):
 
 trigger (why the transition happened; only meaningful for the four
 transition/initial types above -- NONE for confirmations/no-ops):
-  INITIALIZATION : portfolio_before=='NONE' (the very first row)
-  RAW_DECISION   : the daily rebalance() itself applied an action that day
-                   (daily_action != 'NONE') -- checked FIRST
-  MONTHLY_RESET  : daily_action=='NONE' but reset_action != 'NONE'
+  INITIALIZATION            : portfolio_before=='NONE' (the very first row)
+  DUAL_ACTION_ORDER_DEPENDENT : BOTH daily_action != 'NONE' AND
+                   reset_action != 'NONE' the same day -- checked FIRST.
+                   execution_replay.py's output only records WHETHER each
+                   callback acted, not the intermediate portfolio state
+                   between the two calls, so which callback actually
+                   produced the final portfolio_after is genuinely
+                   undetermined from this data alone. Earlier versions of
+                   this classifier picked RAW_DECISION here purely because
+                   daily_action happened to be checked first in the
+                   if/elif chain -- that was a classifier-priority
+                   artifact, not a causal finding, and has been removed.
+  RAW_DECISION   : daily_action != 'NONE' AND reset_action == 'NONE'
+  MONTHLY_RESET  : daily_action == 'NONE' AND reset_action != 'NONE'
                    (Reset() alone caused the transition)
   NONE           : confirmations/no-ops, or (should not occur on real data --
                    see tests) a transition with neither action field
                    explaining it
 
-If BOTH daily_action and reset_action are non-'NONE' on the same day, trigger
-resolves to RAW_DECISION (checked first per the rule above), but
 daily_action and reset_action are BOTH always preserved verbatim as separate
-output columns -- the dual impact is never hidden, only the single
-categorical `trigger` label picks a primary attribution.
+output columns regardless of trigger -- the dual impact is never hidden.
 
 Usage:
   python execution_events.py --execution reports/execution_reset_before_rebalance.csv \
@@ -78,7 +85,15 @@ def classify_event(portfolio_before, portfolio_after, raw_decision,
     if event_type in INITIAL_TYPES:
         trigger = "INITIALIZATION"
     elif event_type in TRANSITION_TYPES:
-        if daily_action != "NONE":
+        if daily_action != "NONE" and reset_action != "NONE":
+            # Both callbacks acted the same day. execution_replay.py's
+            # output has no intermediate-state trace between the two calls,
+            # so which one actually produced portfolio_after is genuinely
+            # undetermined here -- NOT resolved by "daily_action happens to
+            # be checked first" (that was a classifier-priority artifact,
+            # not a causal finding).
+            trigger = "DUAL_ACTION_ORDER_DEPENDENT"
+        elif daily_action != "NONE":
             trigger = "RAW_DECISION"
         elif reset_action != "NONE":
             trigger = "MONTHLY_RESET"
@@ -156,8 +171,9 @@ def main(argv=None):
              "NEUTRAL_NO_PORTFOLIO_CHANGE", "NO_EVENT"):
         print(f"  {k:28s}: {counts.get(k, 0)}")
     print("trigger counts:")
-    for k in ("INITIALIZATION", "RAW_DECISION", "MONTHLY_RESET", "NONE"):
-        print(f"  {k:16s}: {trig_counts.get(k, 0)}")
+    for k in ("INITIALIZATION", "RAW_DECISION", "MONTHLY_RESET",
+             "DUAL_ACTION_ORDER_DEPENDENT", "NONE"):
+        print(f"  {k:28s}: {trig_counts.get(k, 0)}")
     return 0
 
 

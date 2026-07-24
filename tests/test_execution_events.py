@@ -105,16 +105,21 @@ class TriggerAttribution(unittest.TestCase):
         self.assertEqual(et, "EXIT_DEFENSIVE")
         self.assertEqual(trig, "MONTHLY_RESET")
 
-    def test_both_callbacks_act_same_day_raw_decision_wins_but_both_preserved(self):
+    def test_both_callbacks_act_same_day_is_order_dependent_not_raw_decision(self):
         """Required case: a day where BOTH Reset and rebalance perform an
-        action. trigger resolves to RAW_DECISION (checked first), but
-        daily_action and reset_action are BOTH still non-'NONE' in the row
-        -- the dual impact is not hidden, only the single trigger label
-        picks one attribution."""
+        action. execution_replay.py's output has no intermediate-state
+        trace between the two callback calls, so which one actually
+        produced portfolio_after is genuinely undetermined from this data
+        -- trigger must NOT default to RAW_DECISION just because
+        daily_action happens to be checked first in the classifier; that
+        would assert causality with no evidence. Both daily_action and
+        reset_action are still preserved in the row -- the dual impact is
+        not hidden, only mislabeled as a single (wrong) cause if this test
+        regresses."""
         et, trig = EE.classify_event("GROWTH", "FAMA_FRENCH", "bear",
                                      "APPLY_FAMA_FRENCH", "APPLY_GROWTH")
         self.assertEqual(et, "ENTER_DEFENSIVE")
-        self.assertEqual(trig, "RAW_DECISION")
+        self.assertEqual(trig, "DUAL_ACTION_ORDER_DEPENDENT")
         # The caller (build_events) is responsible for keeping both columns;
         # verify that contract at the build_events level too:
         rows = [{"decision_date": "2020-01-01", "raw_decision": "bear",
@@ -125,7 +130,15 @@ class TriggerAttribution(unittest.TestCase):
         events = EE.build_events(rows)
         self.assertEqual(events[0]["daily_action"], "APPLY_FAMA_FRENCH")
         self.assertEqual(events[0]["reset_action"], "APPLY_GROWTH")
-        self.assertEqual(events[0]["trigger"], "RAW_DECISION")
+        self.assertEqual(events[0]["trigger"], "DUAL_ACTION_ORDER_DEPENDENT")
+
+    def test_dual_action_on_exit_defensive_is_also_order_dependent(self):
+        """Same rule applies symmetrically to EXIT_DEFENSIVE, not just
+        ENTER_DEFENSIVE."""
+        et, trig = EE.classify_event("FAMA_FRENCH", "GROWTH", "bull",
+                                     "APPLY_GROWTH", "APPLY_FAMA_FRENCH")
+        self.assertEqual(et, "EXIT_DEFENSIVE")
+        self.assertEqual(trig, "DUAL_ACTION_ORDER_DEPENDENT")
 
     def test_no_event_day_gets_none_trigger(self):
         et, trig = EE.classify_event("GROWTH", "GROWTH", "bear", "NONE", "NONE")
