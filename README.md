@@ -717,10 +717,18 @@ outside the module's own functions. Still the same scope as
 `growth_phase_trades.py`: a hypothetical leveraged SPY long, not the
 author's actual 50-stock `GrowthModel` portfolio.
 
-## Stop-loss overlay and level sweep (`stop_loss_long_trades.py`)
+## Stop-loss overlay and level sweep — underlying-price version (`stop_loss_long_trades.py`)
+
+> **Relabeled, kept unmodified — superseded for equity-space stops.** This
+> section tests a stop on SPY's own move, not on leveraged equity. At 1.8x
+> leverage its "2%" actually needs SPY to fall ~3.6% to trigger. For the
+> corrected, equity-space version (where "2%" means 2% of leveraged
+> equity, and drawdown is measured on the full daily mark-to-market curve)
+> see **"Equity-space stop-loss"** below.
 
 Answers "what if a 2% stop-loss were applied, and is there an optimal
-level?" For each already-computed long trade
+level?" (on SPY's own move — see the equity-stop section below for the
+equity-space answer). For each already-computed long trade
 (`growth_phase_trades_<scenario>.csv`, not recomputed), walks the SPY daily
 `Close` path from the day after entry through the trade's own original
 exit date; the first day the running return drops to `<= -stop_pct` closes
@@ -769,3 +777,62 @@ streaks become a *larger* percentage drop relative to that lower peak.
 throughout this project** — "7% did best here" describes this one dataset,
 not a validated, forward-looking optimal level; no out-of-sample check was
 performed.
+
+## Equity-space stop-loss (`equity_stop_long_trades.py`) — corrects the above
+
+**Corrects two real errors** in the underlying-price version above: (1) a
+stop meant as "X% of equity" at leverage `L` must trigger when the
+**leveraged** return reaches `-X%` (`leverage * underlying_return <=
+-stop_equity_pct`), not when the raw SPY move alone reaches `-X%` — at
+1.8x, a true 2% equity stop needs SPY to fall only `-2/1.8 =
+-1.111...%`, not 2%; (2) drawdown must be measured on the **full daily
+mark-to-market equity curve** (every trading day inside an open position),
+not only at trade-close points, which could understate the true
+intra-trade peak-to-trough.
+
+Position sizing: leverage applied once at entry, held statically (not
+re-levered daily — that would be a different, daily-rebalanced
+instrument): `equity_t = entry_equity * (1 + leverage * (close_t /
+entry_price - 1))`. Between trades, equity is flat. A stop still waits for
+the model's own next green signal — confirmed unchanged. No change to any
+other script, including the underlying-price version above.
+
+```bash
+python equity_stop_long_trades.py --trades reports/growth_phase_trades_reset_before_rebalance.csv \
+    --price-csv data/spy_raw_d1.csv --leverage 1.8 --stop-equity-pct 2.0 \
+    --scenario reset_before_rebalance --out-dir reports
+```
+
+Outputs: `reports/equity_stop_<level>_daily_<scenario>.csv` (full daily
+mark-to-market curve — `date`, `position_open`, `entry_date`,
+`entry_price`, `spy_close`, `underlying_return_from_entry_pct`,
+`leveraged_return_from_entry_pct`, `equity`, `running_peak`,
+`drawdown_pct`, `exit_reason` — saved for the 2% level and the no-stop
+baseline), `reports/equity_stop_sweep_summary.csv` (full sweep, both
+scenarios), and `reports/equity_stop_sweep_report.md`.
+
+`tests/test_equity_stop_long_trades.py` (9 tests) is the mandatory
+PRECHECK, reproducing the requester's own worked examples verbatim: SPY
+close 99.0 (leveraged -1.8%) does **not** trigger a 2% equity stop; SPY
+close 98.8 (leveraged -2.16%) **does**; equivalent SPY threshold
+`-2/1.8 = -1.111111...%` asserted exactly. Drawdown example `100 → 120 →
+108 → 125 → 90` → peaks `100 → 120 → 120 → 125 → 125` → drawdown `0%, 0%,
+-10%, 0%, -28%` reproduced exactly via a real synthetic trade. Cross-check
+against the already-tested `leveraged_compounding.py` worked example
+(100 → 118 → 107.38) confirmed exactly. **Required real-data acceptance
+check**: the no-stop baseline's daily-curve final equity must match the
+already-confirmed sequential-compounding result — confirmed exactly,
+708.1652 / 500.4701 vs. the previously-verified 708.17 / 500.47.
+
+**Result — the picture changes substantially once correctly measured in
+equity space.** A 1% equity stop now gives the **shallowest** daily
+drawdown in both scenarios (-44.1% / -37.4%, vs. -79.5% / -78.1% for
+no-stop) — drawdown now worsens roughly monotonically as the stop loosens,
+the intuitive relationship the underlying-price version did not show. No
+stop still has the highest return (+608.2% / +400.5%); among tested
+levels, 7% (equity) gives the best return (+375.7% / +252.4%) with
+meaningfully better drawdown than no-stop. **No single level is optimal on
+both dimensions** — 1% minimizes drawdown but gives the lowest return of
+any level tested; the choice depends on whether the objective is return or
+drawdown control. Same in-sample caveat as before: this describes what
+happened on this data, not a validated forward-looking optimum.

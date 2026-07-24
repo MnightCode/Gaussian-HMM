@@ -1,8 +1,22 @@
-# Stop-loss overlay on the long SPY trades, and a level sweep
+# Underlying-price stop sweep on the long SPY trades (superseded for equity-space stops)
+
+> **Relabeled, kept unmodified.** This document tests a stop on the
+> **underlying SPY move** (`spy_move <= -stop_pct`), NOT on leveraged
+> equity. At 1.8x leverage, its "2%" level actually requires SPY to fall
+> ~3.6% before triggering — a real, disclosed methodological gap once the
+> question turned out to mean "2% of equity." The everything below is
+> still correctly computed for what it actually tests (verified by its own
+> precheck and real-data cross-checks) and is kept as-is per instruction,
+> not deleted. **For the equity-space version — where "2%" means 2% of
+> leveraged equity, and drawdown is measured on the full daily
+> mark-to-market curve, not just at trade-close points — see
+> `reports/equity_stop_sweep_report.md`.**
 
 **Question asked:** what if a 2% stop-loss were applied to each long trade
 instead of waiting for the model's own exit signal? Is there an "optimal"
-level we can find?
+level we can find? (This document answers it for a stop on SPY's own move;
+see the equity-stop report linked above for the corrected, equity-space
+answer.)
 
 **Method:** for each already-computed long trade
 (`reports/growth_phase_trades_<scenario>.csv`, not recomputed), walk the
