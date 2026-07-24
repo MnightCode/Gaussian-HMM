@@ -921,3 +921,50 @@ count happens to numerically match an earlier, explicitly-retracted
 directly: that layer was wrong because it *relabeled* neutral days and
 built further interpretation on top; this slice does neither, and the
 matching count is a coincidence of this dataset, not reused logic.
+
+## Three-way decomposition: raw signal vs. Reset()'s contribution (`raw_reversal_trades.py`)
+
+Decomposes `raw-signal transitions + reset-induced transitions = actual
+portfolio transitions` into three directly-comparable variants (same
+long-only SPY overlay, 1.8x leverage, sequential compounding as
+`growth_phase_trades.py`/`leveraged_compounding.py`): (1) raw reversal
+only — buy `BEAR_TO_BULL`, sell `BULL_TO_BEAR`
+(`reports/reversal_points.csv`, no execution/Reset semantics at all); (2)
+the author's full execution logic (both callback-order scenarios,
+already-computed `growth_phase_trades_<scenario>.csv`); (3) the author's
+logic *without* Reset — the already-existing `daily_only` control (0
+`MONTHLY_RESET` triggers by construction).
+
+**Variant 1 and Variant 3 turn out to be byte-for-byte identical** — same
+42 trades, same dates, same prices, checked programmatically. Without
+`Reset()`, the author's `rebalance()` only changes the portfolio on a
+genuine raw-signal reversal, so "author's logic minus Reset" and "raw
+signal alone" are the same thing on this data — meaning the gap between
+Variant 2 and Variants 1/3 is *exactly* Reset()'s isolated contribution.
+
+```bash
+python raw_reversal_trades.py --reversal-points reports/reversal_points.csv --out reports/raw_reversal_trades.csv
+python leveraged_compounding.py --trades reports/raw_reversal_trades.csv --scenario raw_reversal_only --leverage 1.8 --out-dir reports
+python plot_three_way_decomposition.py --out reports/three_way_decomposition_chart.png
+```
+
+`tests/test_raw_reversal_trades.py` (3 tests) is the mandatory PRECHECK, a
+hand-worked 2-trade sequence plus one open/unfinished phase, matching
+`growth_phase_trades.py`'s own precheck style. All 3 pass — then
+cross-checked against real `growth_phase_trades_daily_only.csv` and found
+identical, a correctness signal beyond the synthetic precheck alone.
+
+**Results** (leverage 1.8x, start=100): raw reversal only / no-Reset — 42
+trades, final **281.19** (+181.19%). Author's full logic — 88 trades,
+final **708.17** (+608.17%, `reset_before_rebalance`); 97 trades, final
+**500.47** (+400.47%, `rebalance_before_reset`). **Literal answers:** the
+raw HMM signal alone is profitable in this overlay (+181.19%); the
+author's `Reset()` substantially improves the final result (more than
+doubles or triples it here); but `Reset()` also creates more transitions
+(88–97 vs. 42) and deepens the max drawdown (-65.6%/-61.3% vs. -40.4%) —
+it is a real trade-off, not unambiguously good or bad. Visually, the
+no-Reset curve leads until ~2013-2014; the Reset-driven curves overtake it
+afterward and stay ahead through the end — most of Reset's net
+contribution comes from the post-2014 period, not the first 13 years.
+Full detail: `reports/three_way_decomposition_report.md`,
+`reports/three_way_decomposition_summary.csv`.

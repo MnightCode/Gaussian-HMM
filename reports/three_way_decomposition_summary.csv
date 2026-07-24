@@ -1,0 +1,5 @@
+variant,source,n_trades,final_capital,compounded_return_pct,max_drawdown_between_trades_pct
+"1. Raw reversal only (HMM signal alone, no Reset, no execution)","reports/raw_reversal_trades.csv (== growth_phase_trades_daily_only.csv, byte-identical)",42,281.1863,181.1863,-40.41
+"2a. Author execution logic, full (reset_before_rebalance)",reports/growth_phase_trades_reset_before_rebalance.csv,88,708.165177,608.165177,-65.562429
+"2b. Author execution logic, full (rebalance_before_reset)",reports/growth_phase_trades_rebalance_before_reset.csv,97,500.470114,400.470114,-61.32545
+3. Author logic WITHOUT Reset (daily_only control),"reports/growth_phase_trades_daily_only.csv (== raw_reversal_trades.csv, byte-identical)",42,281.1863,181.1863,-40.41
